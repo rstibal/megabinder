@@ -9,7 +9,7 @@ A single-file browser app for tracking your physical Pokémon TCG collection. Se
 - **Real card art** — searches pokemontcg.io as you type, results display actual card thumbnails
 - **Multiple binders** — create, rename, and switch between separate binders (e.g. one per set, one per type)
 - **Configurable grid** — choose from 2×2 up to 6×6 pocket layouts, adjustable per binder
-- **Add by Set** — load an entire set and add cards in bulk. Filter by **rarity** (Common, Uncommon, Rare, Double Rare, Illustration Rare, Ultra Rare, Special Illustration Rare, Hyper Rare, plus Other for older sets) and by **card number** (e.g. `1-198, 215`); only matching cards are shown and selected, and you can still click individual cards to deselect them
+- **Add by Set** — load an entire set and add cards in bulk. Filter by **rarity** (Common, Uncommon, Rare, Double Rare, Illustration Rare, Ultra Rare, Special Illustration Rare, Hyper Rare, plus Other for older sets) and by **card number** (e.g. `1-198, 215`); only matching cards are shown and selected, and you can still click individual cards to deselect them. A separate **Rev. Holo** chip row (Common / Uncommon / Rare, off by default) adds reverse holos as their own slots right after the normal copy. **Finish: Auto** uses TCGdex's per-card variant data (Normal, or Holo for holo-only cards)
 - **Parallel tracking** — track Normal, Reverse Holo, Holo, Full Art, Rainbow, and Gold finishes per slot, each with a distinct visual effect
 - **Persistent storage** — everything saves to `localStorage`; no account or server required
 - **Set autocomplete** — full set list fetched once and cached; type to filter
@@ -45,7 +45,7 @@ Card data and images come from [TCGdex](https://tcgdex.dev) — free, open sourc
 
 Endpoints used (English): `/sets`, `/sets/{id}`, `/cards?name=…`, `/cards?set.id=eq:{id}&rarity=eq:{rarity}`, `/cards/{id}`. Card images are `{image}/low.webp` and `{image}/high.webp`. Transient 5xx/429 responses are retried with backoff.
 
-Search results don't include rarity, so it's fetched when you pick a card. For bulk add, each of the 8 rarities is fetched in parallel per set (the set endpoint doesn't list rarity).
+Search results don't include rarity, so it's fetched when you pick a card. For bulk add, each of the 8 rarities and the normal/reverse/holo variant flags are fetched in parallel per set (the set endpoint lists neither).
 
 ### What gets cached in localStorage
 
@@ -53,7 +53,7 @@ Search results don't include rarity, so it's fetched when you pick a card. For b
 |-----|----------|-----|
 | `pkBinder4` | All binder and card data | Permanent |
 | `pkSets5` | Full set list for autocomplete | 7 days |
-| `pkBulkCache5` | Per-set card listings (bulk add) | 24 hours |
+| `pkBulkCache6` | Per-set card listings (bulk add) | 24 hours |
 
 ---
 

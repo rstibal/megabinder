@@ -175,6 +175,11 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .rchip{padding:4px 10px;border-radius:999px;border:1px solid var(--border);font-size:.74rem;font-weight:600;cursor:pointer;background:var(--surf);color:var(--muted);transition:all .12s}
 .rchip span{opacity:.7;font-weight:500;margin-left:2px}
 .rchip.on{background:var(--red);border-color:var(--red);color:#fff}
+.rchip.rev.on{background:#6366f1;border-color:#6366f1}
+.bulk-none{font-size:.74rem;color:var(--muted);padding:4px 0}
+.bcard.rh{border-color:rgba(99,102,241,.55)}
+.bcard.rh::after{content:'RH';position:absolute;top:4px;right:4px;z-index:2;font-size:.5rem;font-weight:800;line-height:1;padding:3px 4px;border-radius:4px;background:#6366f1;color:#fff}
+.bcard.rh.sel{border-color:#6366f1}
 .bulk-vrow{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .bulk-vrow label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0}
 </style>
@@ -372,6 +377,10 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
         <div class="rchips" id="bulk-rchips"></div>
       </div>
       <div class="bulk-frow">
+        <label>Rev. Holo</label>
+        <div class="rchips" id="bulk-revchips"></div>
+      </div>
+      <div class="bulk-frow">
         <label>Numbers</label>
         <input class="fi" id="bulk-nums" placeholder="e.g. 1-198, 215 — blank = all" oninput="applyBulkFilters()" autocomplete="off">
       </div>
@@ -387,7 +396,8 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     <div class="bulk-vrow hidden" id="bulk-vrow">
       <label>Finish</label>
       <div class="vopts">
-        <button class="vopt on" data-v="normal"       onclick="pickBV(this)">Normal</button>
+        <button class="vopt on" data-v="auto"         onclick="pickBV(this)" title="Use each card's real finish from TCGdex (Normal, or Holo for holo-only cards). Reverse holo copies are always Rev. Holo.">Auto</button>
+        <button class="vopt"    data-v="normal"       onclick="pickBV(this)">Normal</button>
         <button class="vopt"    data-v="reverse_holo" onclick="pickBV(this)">Rev. Holo</button>
         <button class="vopt"    data-v="holo"         onclick="pickBV(this)">Holo</button>
         <button class="vopt"    data-v="full_art"     onclick="pickBV(this)">Full Art</button>
@@ -411,7 +421,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 const API       = 'https://api.tcgdex.net/v2/en';
 const SK        = 'pkBinder4';
 const SK_SETS   = 'pkSets5';
-const SK_BULK   = 'pkBulkCache5';
+const SK_BULK   = 'pkBulkCache6';
 const SETS_TTL  = 7 * 24 * 60 * 60 * 1000;
 const BULK_TTL  = 24 * 60 * 60 * 1000;
 const RARITIES = ['Common','Uncommon','Rare','Double rare','Illustration rare','Ultra Rare','Special illustration rare','Hyper rare'];
@@ -434,9 +444,10 @@ let nsT = null, ssT = null;  // debounce timers
 /* bulk-add state */
 let bulkCards      = [];
 let bulkSelected   = new Set();
-let bulkVisible    = [];   // indices of cards matching the current filters
-let bulkRarOn      = new Set();   // rarity buckets currently enabled
-let bulkVariant    = 'normal';
+let bulkVisible    = [];   // entry keys ('<cardIdx>:n' normal / '<cardIdx>:r' reverse holo) matching the filters
+let bulkRarOn      = new Set();   // rarity buckets enabled for normal copies
+let bulkRevOn      = new Set();   // rarity buckets enabled for reverse holo copies
+let bulkVariant    = 'auto';
 let bulkSetMatches = [];
 let bsT            = null;
 
@@ -825,8 +836,8 @@ function doDelBinder() {
 function openBulk() {
   const b = ab();
   if (!b) { alert('Create a binder first.'); return; }
-  bulkCards = []; bulkSelected.clear(); bulkVisible = []; bulkRarOn.clear();
-  bulkVariant = 'normal'; bulkSetMatches = [];
+  bulkCards = []; bulkSelected.clear(); bulkVisible = []; bulkRarOn.clear(); bulkRevOn.clear();
+  bulkVariant = 'auto'; bulkSetMatches = [];
   document.getElementById('bulk-set-in').value = '';
   document.getElementById('bulk-nums').value = '';
   document.getElementById('bulk-status').textContent = 'Search for a set above to load its cards.';
@@ -834,7 +845,7 @@ function openBulk() {
     document.getElementById(id).classList.add('hidden'));
   document.getElementById('bulk-ok').disabled = true;
   document.getElementById('bulk-ok').textContent = 'Add Selected';
-  document.querySelectorAll('#bulk-vrow .vopt').forEach(btn => btn.classList.toggle('on', btn.dataset.v === 'normal'));
+  document.querySelectorAll('#bulk-vrow .vopt').forEach(btn => btn.classList.toggle('on', btn.dataset.v === 'auto'));
   openM('m-bulk');
   setTimeout(() => document.getElementById('bulk-set-in').focus(), 60);
 }
@@ -885,15 +896,21 @@ async function loadBulkCards(setId) {
 
   try {
     // The set endpoint lists every card but not rarity, so fetch each rarity bucket in parallel
-    const [set, ...buckets] = await Promise.all([
-      apiJson(`${API}/sets/${encodeURIComponent(setId)}`),
-      ...RARITIES.map(r => apiJson(`${API}/cards?set.id=eq:${encodeURIComponent(setId)}&rarity=eq:${encodeURIComponent(r)}`)),
+    // Same for the variant flags (normal / reverse holo / holo) the cards exist in
+    const sid = encodeURIComponent(setId);
+    const [set, ...rest] = await Promise.all([
+      apiJson(`${API}/sets/${sid}`),
+      ...RARITIES.map(r => apiJson(`${API}/cards?set.id=eq:${sid}&rarity=eq:${encodeURIComponent(r)}`)),
+      ...['normal', 'reverse', 'holo'].map(v => apiJson(`${API}/cards?set.id=eq:${sid}&variants.${v}=true`)),
     ]);
     const rarityOf = new Map();
-    buckets.forEach((list, i) => list.forEach(c => rarityOf.set(c.id, RARITIES[i])));
+    RARITIES.forEach((r, i) => rest[i].forEach(c => rarityOf.set(c.id, r)));
+    const idSet = list => new Set(list.map(c => c.id));
+    const [vn, vr, vh] = rest.slice(RARITIES.length).map(idSet);
     bulkCards = (set.cards || []).map(c => {
       const card = toCard(c, rarityOf.get(c.id));
       card.set = { id: set.id, name: set.name };
+      card.v = { n: vn.has(c.id), r: vr.has(c.id), h: vh.has(c.id) };
       return card;
     });
     try {
@@ -913,21 +930,29 @@ async function loadBulkCards(setId) {
 const bulkBucket = c => RARITIES.includes(c.rarity) ? c.rarity : 'Other';
 
 function initBulkFilters() {
-  const counts = {};
-  bulkCards.forEach(c => { const k = bulkBucket(c); counts[k] = (counts[k] || 0) + 1; });
-  const keys = [...RARITIES, 'Other'].filter(k => counts[k]);
-  bulkRarOn = new Set(keys);
-  document.getElementById('bulk-rchips').innerHTML = keys.map(k =>
-    `<button class="rchip on" data-r="${esc(k)}" onclick="toggleBulkRarity(this)">${esc(RARITY_LABEL[k])} <span>${counts[k]}</span></button>`
+  const counts = {}, revCounts = {};
+  bulkCards.forEach(c => {
+    const k = bulkBucket(c);
+    counts[k] = (counts[k] || 0) + 1;
+    if (c.v?.r) revCounts[k] = (revCounts[k] || 0) + 1;
+  });
+  const chips = (cnt, kind) => [...RARITIES, 'Other'].filter(k => cnt[k]).map(k =>
+    `<button class="rchip${kind === 'n' ? ' on' : ''}${kind === 'r' ? ' rev' : ''}" data-r="${esc(k)}" data-kind="${kind}" onclick="toggleBulkRarity(this)">${esc(RARITY_LABEL[k])} <span>${cnt[k]}</span></button>`
   ).join('');
+  bulkRarOn = new Set(Object.keys(counts));
+  bulkRevOn = new Set();   // reverse holos are opt-in so a plain add doesn't double up the set
+  document.getElementById('bulk-rchips').innerHTML = chips(counts, 'n');
+  document.getElementById('bulk-revchips').innerHTML = chips(revCounts, 'r') ||
+    '<span class="bulk-none">No reverse holos in this set</span>';
   document.getElementById('bulk-filters').classList.remove('hidden');
   applyBulkFilters();
 }
 
 function toggleBulkRarity(btn) {
+  const set = btn.dataset.kind === 'r' ? bulkRevOn : bulkRarOn;
   const r = btn.dataset.r;
-  if (bulkRarOn.has(r)) bulkRarOn.delete(r); else bulkRarOn.add(r);
-  btn.classList.toggle('on', bulkRarOn.has(r));
+  if (set.has(r)) set.delete(r); else set.add(r);
+  btn.classList.toggle('on', set.has(r));
   applyBulkFilters();
 }
 
@@ -946,18 +971,20 @@ function parseNumFilter(str) {
   return out.length ? out : null;
 }
 
-/* Filters define the selection: everything that matches is selected, the rest is hidden */
+/* Filters define the selection: every matching entry is selected, the rest are hidden.
+   A card yields a normal entry and, if it has a reverse holo, a second one right after it. */
 function applyBulkFilters() {
   const ranges = parseNumFilter(document.getElementById('bulk-nums').value);
   bulkVisible = [];
   bulkCards.forEach((c, i) => {
-    if (!bulkRarOn.has(bulkBucket(c))) return;
     if (ranges) {
       if (!/^\d+$/.test(c.number)) return;
       const n = +c.number;
       if (!ranges.some(([lo, hi]) => n >= lo && n <= hi)) return;
     }
-    bulkVisible.push(i);
+    const k = bulkBucket(c);
+    if (bulkRarOn.has(k))             bulkVisible.push(`${i}:n`);
+    if (c.v?.r && bulkRevOn.has(k))   bulkVisible.push(`${i}:r`);
   });
   bulkSelected = new Set(bulkVisible);
   renderBulkGrid();
@@ -966,14 +993,16 @@ function applyBulkFilters() {
 function renderBulkGrid() {
   const status = document.getElementById('bulk-status');
   if (!bulkCards.length) { status.textContent = 'No cards found in this set.'; return; }
+  const nRev = bulkVisible.filter(k => k.endsWith(':r')).length;
   status.textContent = bulkVisible.length
-    ? `${bulkVisible.length} of ${bulkCards.length} cards match — click a card to deselect it`
+    ? `${bulkVisible.length - nRev} cards${nRev ? ` + ${nRev} reverse holos` : ''} match — click one to deselect it`
     : `No cards match these filters (${bulkCards.length} in set)`;
-  document.getElementById('bcg').innerHTML = bulkVisible.map(i => {
-    const c = bulkCards[i];
+  document.getElementById('bcg').innerHTML = bulkVisible.map(key => {
+    const [i, kind] = key.split(':');
+    const c = bulkCards[+i];
     const img = c.images?.small || '';
     const num = c.number ? `#${c.number}` : '';
-    return `<div class="bcard${bulkSelected.has(i) ? ' sel' : ''}" data-i="${i}" onclick="toggleBCard(${i})">
+    return `<div class="bcard${kind === 'r' ? ' rh' : ''}${bulkSelected.has(key) ? ' sel' : ''}" data-k="${key}" onclick="toggleBCard('${key}')">
       ${img
         ? `<img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy">`
         : `<div class="bcard-ph">${esc(c.name)}</div>`}
@@ -986,18 +1015,18 @@ function renderBulkGrid() {
   updateBulkCount();
 }
 
-function toggleBCard(i) {
-  if (bulkSelected.has(i)) bulkSelected.delete(i);
-  else bulkSelected.add(i);
-  document.querySelector(`.bcard[data-i="${i}"]`)?.classList.toggle('sel', bulkSelected.has(i));
+function toggleBCard(key) {
+  if (bulkSelected.has(key)) bulkSelected.delete(key);
+  else bulkSelected.add(key);
+  document.querySelector(`.bcard[data-k="${key}"]`)?.classList.toggle('sel', bulkSelected.has(key));
   updateBulkCount();
 }
 
 function selectAllBulk(on) {
-  if (on) bulkVisible.forEach(i => bulkSelected.add(i));
+  if (on) bulkVisible.forEach(k => bulkSelected.add(k));
   else bulkSelected.clear();
   document.querySelectorAll('.bcard').forEach(el =>
-    el.classList.toggle('sel', bulkSelected.has(+el.dataset.i)));
+    el.classList.toggle('sel', bulkSelected.has(el.dataset.k)));
   updateBulkCount();
 }
 
@@ -1009,6 +1038,12 @@ function updateBulkCount() {
   btn.textContent = n > 0 ? `Add ${n} Card${n > 1 ? 's' : ''}` : 'Add Selected';
 }
 
+/* Finish for a normal-slot copy when "Auto" is chosen, from the card's TCGdex variants */
+function autoFinish(c) {
+  if (c.v?.n || !c.v?.h) return 'normal';
+  return 'holo';
+}
+
 function pickBV(btn) {
   document.querySelectorAll('#bulk-vrow .vopt').forEach(b => b.classList.remove('on'));
   btn.classList.add('on');
@@ -1017,10 +1052,10 @@ function pickBV(btn) {
 
 function doBulkAdd() {
   const b = ab(); if (!b) return;
-  const sorted = [...bulkSelected].sort((a, z) => a - z);
   let firstSlot = null;
-  for (const i of sorted) {
-    const card = bulkCards[i];
+  for (const key of bulkVisible.filter(k => bulkSelected.has(k))) {
+    const [i, kind] = key.split(':');
+    const card = bulkCards[+i];
     const entry = {
       id:         `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       tcgId:      card.id,
@@ -1031,7 +1066,7 @@ function doBulkAdd() {
       rarity:     card.rarity     || '',
       imageSmall: card.images?.small || '',
       imageLarge: card.images?.large || '',
-      variant:    bulkVariant,
+      variant:    kind === 'r' ? 'reverse_holo' : (bulkVariant === 'auto' ? autoFinish(card) : bulkVariant),
       addedAt:    Date.now(),
     };
     const ti = nextEmpty(b);
