@@ -50,24 +50,39 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .nav-btn{background:transparent;border:1px solid var(--border);color:var(--text);border-radius:7px;width:34px;height:34px;font-size:1.2rem;line-height:1;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center}
 .nav-btn:hover:not(:disabled){background:var(--surf2)}.nav-btn:disabled{opacity:.25;cursor:default}
 
-.lbl{display:none}
+.lbl,.sect,.pbar{display:none}
+.pbar{height:5px;border-radius:3px;background:var(--surf2);overflow:hidden;flex-basis:100%}
+.pbar i{display:block;height:100%;width:0;background:#4ade80;border-radius:3px;transition:width .3s}
 .blist{display:none}
-.bitem{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:1px solid transparent;color:var(--muted);border-radius:7px;padding:7px 10px;font-size:.85rem;cursor:pointer}
-.bitem:hover{background:var(--surf2);color:var(--text)}
-.bitem.on{background:var(--surf2);color:var(--text);border-color:var(--border);font-weight:600}
-.bitem span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bitem{display:block;width:100%;text-align:left;background:transparent;border:1px solid transparent;color:var(--muted);border-radius:8px;padding:8px 10px;font-size:.85rem;cursor:pointer}
+.bitem:hover{background:rgba(255,255,255,.05);color:var(--text)}
+.bitem.on{background:var(--surf2);color:var(--text);border-color:var(--border);box-shadow:inset 3px 0 0 var(--red)}
+.bitem .bt{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.bitem .bt span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .bitem .bn{font-size:.72rem;color:var(--muted);flex-shrink:0}
+.bitem .pbar{display:block;height:3px;margin-top:6px}
+.bitem .pbar i{background:#64748b}.bitem.on .pbar i{background:#4ade80}
 @media (min-width:900px){
   body{padding-left:230px}
   .header{position:fixed;left:0;top:0;bottom:0;width:230px;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:18px;padding:18px 14px;border-bottom:none;border-right:1px solid var(--border);overflow-y:auto}
   .binder-ctrl{flex:none;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:8px}
   .binder-sel{display:none}
   .blist{display:flex;flex-direction:column;gap:2px;margin-bottom:6px;max-height:42vh;overflow-y:auto}
-  .binder-ctrl .btn{text-align:left}
-  .binder-ctrl .btn-red{text-align:center}
+  .binder-ctrl .btn{text-align:left;border-color:transparent;padding:8px 10px}
+  .binder-ctrl .btn:hover{background:rgba(255,255,255,.06)}
+  .sect{display:block;font-size:.66rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);opacity:.7;padding:0 10px;margin-top:2px}
+  .sect2{margin-top:14px}
+  .binder-ctrl .b-new{background:transparent;color:var(--muted);border:1px dashed var(--border);text-align:center;margin-bottom:2px}
+  .binder-ctrl .b-new:hover{border-color:var(--red);color:var(--text);background:rgba(239,68,68,.08)}
+  .binder-ctrl .b-add{background:var(--red);color:#fff;text-align:center}
+  .binder-ctrl .b-add:hover{background:#dc2626}
+  .binder-ctrl>*{order:5}
+  .binder-ctrl .sect:first-child{order:0}
+  .blist{order:1!important}.b-new{order:2!important}.sect2{order:3!important}.b-add{order:4!important}
+  .hstats .pbar{display:block;margin-top:4px}
+  .hstats{margin-top:auto;padding:12px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.03)}
   #sync-btn,.binder-ctrl .btn[title="Binder settings"]{padding:7px 14px}
   .lbl{display:inline}
-  .hstats{order:-1;margin-top:0}
   .binder-ctrl{order:1}.hstats{order:2}
   .viewport{padding:28px 32px 48px}
 }
@@ -251,17 +266,20 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     My Binder
   </div>
   <div class="binder-ctrl">
+    <div class="sect">Binders</div>
     <select class="binder-sel" id="binder-sel" onchange="switchBinder(this.value)"></select>
     <nav class="blist" id="blist"></nav>
     <button class="btn btn-ghost" style="padding:6px 10px" onclick="openSettings()" title="Binder settings">⚙️<span class="lbl"> Settings</span></button>
-    <button class="btn btn-ghost" onclick="openBulk()">+ Add by Set</button>
+    <div class="sect sect2">Tools</div>
+    <button class="btn btn-ghost b-add" onclick="openBulk()">+ Add by Set</button>
     <button class="btn btn-ghost" id="sync-btn" data-state="off" onclick="openSync()" title="Cloud sync (off)">☁<span class="lbl"> Cloud sync</span></button>
-    <button class="btn btn-red" onclick="openNewBinder()">+ New Binder</button>
+    <button class="btn btn-red b-new" onclick="openNewBinder()">+ New Binder</button>
   </div>
   <div class="hstats" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <span class="chip"><b id="hc">0</b> cards</span>
     <span class="chip chip-need hidden" id="hneed"><b id="hn">0</b> to get</span>
     <span class="chip"><b id="hf">0</b>/<b id="ht">0</b> slots</span>
+    <div class="pbar"><i id="hbar"></i></div>
   </div>
 </header>
 
@@ -646,7 +664,10 @@ function renderSel() {
       ).join('')
     : '<option value="">— no binders —</option>';
   document.getElementById('blist').innerHTML = st.binders.map(b =>
-    `<button class="bitem${b.id===st.activeId?' on':''}" onclick="switchBinder('${b.id}')"><span>${esc(b.name)}</span><span class="bn">${b.slots.filter(Boolean).length}</span></button>`
+    {
+      const f = b.slots.filter(Boolean).length, n = b.slots.filter(c => c && c.owned === false).length;
+      return `<button class="bitem${b.id===st.activeId?' on':''}" onclick="switchBinder('${b.id}')"><div class="bt"><span>${esc(b.name)}</span><span class="bn">${n ? `${f - n}/${f}` : f}</span></div><div class="pbar"><i style="width:${f ? Math.round((f - n) / f * 100) : 0}%"></i></div></button>`;
+    }
   ).join('');
 }
 
@@ -657,6 +678,7 @@ function renderStats() {
   const tp = b ? totalPg(b) : 0;
   document.getElementById('hc').textContent = filled - need;
   document.getElementById('hn').textContent = need;
+  document.getElementById('hbar').style.width = (filled ? Math.round((filled - need) / filled * 100) : 0) + '%';
   document.getElementById('hneed').classList.toggle('hidden', !need);
   document.getElementById('hf').textContent = filled;
   document.getElementById('ht').textContent = b ? tp * spp(b) : 0;
