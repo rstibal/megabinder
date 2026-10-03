@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>My Card Binder</title>
-<!-- Requires internet access — uses the PokéTCG.io API for card art & set data -->
+<!-- Requires internet access — uses the TCGdex API for card art & set data -->
 <style>
 /* ── Tokens ──────────────────────────────────────────────── */
 :root {
@@ -167,6 +167,14 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .bcard.sel::before{content:'✓';position:absolute;top:4px;left:4px;width:18px;height:18px;background:var(--red);border-radius:50%;color:#fff;font-size:.62rem;font-weight:900;display:flex;align-items:center;justify-content:center;z-index:2;line-height:1}
 .bcard-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:.55rem;color:rgba(255,255,255,.6);text-align:center;padding:4px;background:#475569}
 .bcard-nm{position:absolute;bottom:0;left:0;right:0;font-size:.42rem;background:rgba(0,0,0,.8);color:rgba(255,255,255,.92);padding:2px 3px;text-align:center;line-height:1.3;z-index:1}
+.bulk-filters{background:var(--surf2);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px}
+.bulk-frow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.bulk-frow>label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;width:58px;flex-shrink:0}
+.bulk-frow .fi{flex:1;min-width:180px}
+.rchips{display:flex;flex-wrap:wrap;gap:6px;flex:1}
+.rchip{padding:4px 10px;border-radius:999px;border:1px solid var(--border);font-size:.74rem;font-weight:600;cursor:pointer;background:var(--surf);color:var(--muted);transition:all .12s}
+.rchip span{opacity:.7;font-weight:500;margin-left:2px}
+.rchip.on{background:var(--red);border-color:var(--red);color:#fff}
 .bulk-vrow{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .bulk-vrow label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0}
 </style>
@@ -358,6 +366,16 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
       </div>
     </div>
     <div class="status" id="bulk-status">Search for a set above to load its cards.</div>
+    <div class="bulk-filters hidden" id="bulk-filters">
+      <div class="bulk-frow">
+        <label>Rarity</label>
+        <div class="rchips" id="bulk-rchips"></div>
+      </div>
+      <div class="bulk-frow">
+        <label>Numbers</label>
+        <input class="fi" id="bulk-nums" placeholder="e.g. 1-198, 215 — blank = all" oninput="applyBulkFilters()" autocomplete="off">
+      </div>
+    </div>
     <div class="bulk-bar hidden" id="bulk-bar">
       <div class="bulk-bar-left">
         <button class="btn btn-ghost" style="padding:5px 10px;font-size:.78rem" onclick="selectAllBulk(true)">Select All</button>
@@ -390,19 +408,21 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 'use strict';
 
 /* ── Constants ────────────────────────────────────────────── */
-const API       = 'https://api.pokemontcg.io/v2';
+const API       = 'https://api.tcgdex.net/v2/en';
 const SK        = 'pkBinder4';
-const SK_SETS   = 'pkSets4';
-const SK_BULK   = 'pkBulkCache4';
+const SK_SETS   = 'pkSets5';
+const SK_BULK   = 'pkBulkCache5';
 const SETS_TTL  = 7 * 24 * 60 * 60 * 1000;
 const BULK_TTL  = 24 * 60 * 60 * 1000;
+const RARITIES = ['Common','Uncommon','Rare','Double rare','Illustration rare','Ultra Rare','Special illustration rare','Hyper rare'];
+const RARITY_LABEL = { 'Common':'Common', 'Uncommon':'Uncommon', 'Rare':'Rare', 'Double rare':'Double Rare', 'Illustration rare':'Illustration Rare', 'Ultra Rare':'Ultra Rare', 'Special illustration rare':'Special Illustration Rare', 'Hyper rare':'Hyper Rare', 'Other':'Other' };
 const VL = { normal:'Normal', reverse_holo:'Rev. Holo', holo:'Holo', full_art:'Full Art', rainbow:'Rainbow', gold:'Gold' };
 
 /* ── App state ────────────────────────────────────────────── */
 let st       = { binders:[], activeId:null };
 let pg       = 0;
 let addSlot  = null;   // which slot index we're adding to (null = next empty)
-let selCard  = null;   // PokéTCG card object selected from search
+let selCard  = null;   // card object selected from search
 let selV     = 'normal';
 let tR = 3, tC = 3;   // temp dims for settings modal
 let newPre   = { r:3, c:3 };
@@ -414,6 +434,8 @@ let nsT = null, ssT = null;  // debounce timers
 /* bulk-add state */
 let bulkCards      = [];
 let bulkSelected   = new Set();
+let bulkVisible    = [];   // indices of cards matching the current filters
+let bulkRarOn      = new Set();   // rarity buckets currently enabled
 let bulkVariant    = 'normal';
 let bulkSetMatches = [];
 let bsT            = null;
@@ -454,8 +476,8 @@ function mkBinder(name, r, c) {
   };
 }
 
-/* ── PokéTCG API ──────────────────────────────────────────── */
-/* PokéTCG.io is flaky (intermittent 500/504s) — retry with backoff */
+/* ── TCGdex API ───────────────────────────────────────────── */
+/* Retry transient 5xx/429 responses with backoff */
 async function apiFetch(url, tries = 4) {
   let last;
   for (let i = 0; i < tries; i++) {
@@ -469,20 +491,41 @@ async function apiFetch(url, tries = 4) {
   throw last;
 }
 
+async function apiJson(url) {
+  const r = await apiFetch(url);
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return r.json();
+}
+
+/* Normalise a TCGdex list item to the shape the UI uses */
+function toCard(c, rarity) {
+  const sid = c.id.slice(0, c.id.lastIndexOf('-'));
+  return {
+    id: c.id,
+    name: c.name,
+    number: c.localId || '',
+    rarity: rarity || c.rarity || '',
+    images: c.image ? { small: `${c.image}/low.webp`, large: `${c.image}/high.webp` } : {},
+    set: { id: sid, name: allSets.find(x => x.id === sid)?.name || '' },
+  };
+}
+
 async function apiSearch(name, setId) {
-  let q = `name:"${name}"`;
-  if (setId) q += ` set.id:${setId}`;
-  const r = await apiFetch(`${API}/cards?q=${encodeURIComponent(q)}&pageSize=24&orderBy=-set.releaseDate`);
-  if (!r.ok) throw new Error(`API error ${r.status}`);
-  return (await r.json()).data || [];
+  const p = new URLSearchParams({ name, 'pagination:page': 1, 'pagination:itemsPerPage': 100 });
+  if (setId) p.set('set.id', `eq:${setId}`);
+  const list = await apiJson(`${API}/cards?${p}`);
+  const order = id => { const i = allSets.findIndex(x => x.id === id); return i < 0 ? 1e9 : i; };
+  return list.map(c => toCard(c))
+    .sort((a, z) => order(a.set.id) - order(z.set.id))   // allSets is newest-first
+    .slice(0, 48);
 }
 
 async function loadSets() {
   try {
     const c = JSON.parse(localStorage.getItem(SK_SETS) || 'null');
     if (c && Date.now() - c.ts < SETS_TTL) { allSets = c.data; return; }
-    const r = await apiFetch(`${API}/sets?orderBy=-releaseDate&pageSize=250`);
-    allSets = (await r.json()).data || [];
+    const list = await apiJson(`${API}/sets?sort:field=releaseDate&sort:order=DESC`);
+    allSets = list.map(x => ({ id: x.id, name: x.name }));
     localStorage.setItem(SK_SETS, JSON.stringify({ ts: Date.now(), data: allSets }));
   } catch { allSets = []; }
 }
@@ -626,12 +669,21 @@ function pickResult(i) {
   selCard = results[i];
   document.querySelectorAll('.rc').forEach((el, j) => el.classList.toggle('sel', j === i));
   const c = selCard;
+  const meta = () => {
+    document.getElementById('sel-meta').textContent =
+      [c.set?.name, c.number ? `#${c.number}` : '', c.rarity].filter(Boolean).join(' · ');
+  };
   document.getElementById('sel-img').src  = c.images?.large || c.images?.small || '';
   document.getElementById('sel-name').textContent = c.name;
-  document.getElementById('sel-meta').textContent =
-    [c.set?.name, c.number ? `#${c.number}` : '', c.rarity].filter(Boolean).join(' · ');
+  meta();
   document.getElementById('sel-area').classList.remove('hidden');
   document.getElementById('add-ok').disabled = false;
+  // List results omit rarity; fetch it for the chosen card
+  if (!c.rarity) {
+    apiJson(`${API}/cards/${encodeURIComponent(c.id)}`)
+      .then(d => { c.rarity = d.rarity || ''; if (selCard === c) meta(); })
+      .catch(() => {});
+  }
 }
 
 function pickV(btn) {
@@ -654,8 +706,7 @@ function showSetDrop() {
   if (!setMatches.length) { dd.classList.add('hidden'); return; }
   dd.innerHTML = setMatches.map((s, i) =>
     `<div class="acitem" onclick="pickSet(${i})">
-      ${s.images?.symbol ? `<img src="${esc(s.images.symbol)}" alt="">` : ''}
-      <span>${esc(s.name)} <span style="color:var(--muted);font-size:.75em">${esc(s.series||'')}</span></span>
+      <span>${esc(s.name)} <span style="color:var(--muted);font-size:.75em">${esc(s.id)}</span></span>
     </div>`
   ).join('');
   dd.classList.remove('hidden');
@@ -774,15 +825,15 @@ function doDelBinder() {
 function openBulk() {
   const b = ab();
   if (!b) { alert('Create a binder first.'); return; }
-  bulkCards = []; bulkSelected.clear(); bulkVariant = 'normal'; bulkSetMatches = [];
+  bulkCards = []; bulkSelected.clear(); bulkVisible = []; bulkRarOn.clear();
+  bulkVariant = 'normal'; bulkSetMatches = [];
   document.getElementById('bulk-set-in').value = '';
+  document.getElementById('bulk-nums').value = '';
   document.getElementById('bulk-status').textContent = 'Search for a set above to load its cards.';
-  document.getElementById('bulk-bar').classList.add('hidden');
-  document.getElementById('bcg').classList.add('hidden');
-  document.getElementById('bulk-vrow').classList.add('hidden');
+  ['bulk-bar','bcg','bulk-vrow','bulk-filters','bulk-set-drop'].forEach(id =>
+    document.getElementById(id).classList.add('hidden'));
   document.getElementById('bulk-ok').disabled = true;
   document.getElementById('bulk-ok').textContent = 'Add Selected';
-  document.getElementById('bulk-set-drop').classList.add('hidden');
   document.querySelectorAll('#bulk-vrow .vopt').forEach(btn => btn.classList.toggle('on', btn.dataset.v === 'normal'));
   openM('m-bulk');
   setTimeout(() => document.getElementById('bulk-set-in').focus(), 60);
@@ -797,12 +848,11 @@ function showBulkSetDrop() {
   const v  = document.getElementById('bulk-set-in').value.trim().toLowerCase();
   const dd = document.getElementById('bulk-set-drop');
   if (!v || !allSets.length) { dd.classList.add('hidden'); return; }
-  bulkSetMatches = allSets.filter(s => s.name.toLowerCase().includes(v)).slice(0, 22);
+  bulkSetMatches = allSets.filter(s => s.name.toLowerCase().includes(v) || s.id.toLowerCase() === v).slice(0, 22);
   if (!bulkSetMatches.length) { dd.classList.add('hidden'); return; }
   dd.innerHTML = bulkSetMatches.map((s, i) =>
     `<div class="acitem" onclick="pickBulkSet(${i})">
-      ${s.images?.symbol ? `<img src="${esc(s.images.symbol)}" alt="">` : ''}
-      <span>${esc(s.name)} <span style="color:var(--muted);font-size:.75em">${esc(s.series||'')}</span></span>
+      <span>${esc(s.name)} <span style="color:var(--muted);font-size:.75em">${esc(s.id)}</span></span>
     </div>`
   ).join('');
   dd.classList.remove('hidden');
@@ -812,71 +862,125 @@ function pickBulkSet(i) {
   const s = bulkSetMatches[i];
   document.getElementById('bulk-set-in').value = s.name;
   document.getElementById('bulk-set-drop').classList.add('hidden');
-  loadBulkCards(s.id, s.name);
+  loadBulkCards(s.id);
 }
 
 async function loadBulkCards(setId) {
-  bulkCards = []; bulkSelected.clear();
-  document.getElementById('bulk-bar').classList.add('hidden');
-  document.getElementById('bcg').classList.add('hidden');
-  document.getElementById('bulk-vrow').classList.add('hidden');
+  bulkCards = []; bulkSelected.clear(); bulkVisible = [];
+  ['bulk-bar','bcg','bulk-vrow','bulk-filters'].forEach(id =>
+    document.getElementById(id).classList.add('hidden'));
+  document.getElementById('bulk-nums').value = '';
   document.getElementById('bulk-ok').disabled = true;
   document.getElementById('bulk-status').innerHTML = '<span class="spin"></span>Loading cards…';
 
-  // Check bulk-specific cache
   try {
     const cache = JSON.parse(localStorage.getItem(SK_BULK) || '{}');
     const entry = cache[setId];
     if (entry && Date.now() - entry.t < BULK_TTL) {
       bulkCards = entry.d;
-      renderBulkGrid();
+      initBulkFilters();
       return;
     }
   } catch {}
 
   try {
-    let cards = [], page = 1;
-    while (true) {
-      const r = await apiFetch(`${API}/cards?q=set.id:${setId}&pageSize=250&orderBy=number&page=${page}`);
-      if (!r.ok) throw new Error(`API ${r.status}`);
-      const d = await r.json();
-      cards = cards.concat(d.data || []);
-      if (!d.data?.length || cards.length >= d.totalCount) break;
-      page++;
-    }
-    bulkCards = cards;
-    // Cache, keeping last 10 sets (they're large)
+    // The set endpoint lists every card but not rarity, so fetch each rarity bucket in parallel
+    const [set, ...buckets] = await Promise.all([
+      apiJson(`${API}/sets/${encodeURIComponent(setId)}`),
+      ...RARITIES.map(r => apiJson(`${API}/cards?set.id=eq:${encodeURIComponent(setId)}&rarity=eq:${encodeURIComponent(r)}`)),
+    ]);
+    const rarityOf = new Map();
+    buckets.forEach((list, i) => list.forEach(c => rarityOf.set(c.id, RARITIES[i])));
+    bulkCards = (set.cards || []).map(c => {
+      const card = toCard(c, rarityOf.get(c.id));
+      card.set = { id: set.id, name: set.name };
+      return card;
+    });
     try {
       const cache = JSON.parse(localStorage.getItem(SK_BULK) || '{}');
-      cache[setId] = { t: Date.now(), d: cards };
+      cache[setId] = { t: Date.now(), d: bulkCards };
       const keys = Object.keys(cache);
       if (keys.length > 10) delete cache[keys[0]];
       localStorage.setItem(SK_BULK, JSON.stringify(cache));
     } catch {}
-    renderBulkGrid();
+    initBulkFilters();
   } catch (e) {
     document.getElementById('bulk-status').textContent = `Error: ${e.message}`;
   }
 }
 
-function renderBulkGrid() {
-  if (!bulkCards.length) {
-    document.getElementById('bulk-status').textContent = 'No cards found in this set.';
-    return;
+/* Rarity bucket of a card: one of RARITIES, else 'Other' (older / special rarities) */
+const bulkBucket = c => RARITIES.includes(c.rarity) ? c.rarity : 'Other';
+
+function initBulkFilters() {
+  const counts = {};
+  bulkCards.forEach(c => { const k = bulkBucket(c); counts[k] = (counts[k] || 0) + 1; });
+  const keys = [...RARITIES, 'Other'].filter(k => counts[k]);
+  bulkRarOn = new Set(keys);
+  document.getElementById('bulk-rchips').innerHTML = keys.map(k =>
+    `<button class="rchip on" data-r="${esc(k)}" onclick="toggleBulkRarity(this)">${esc(RARITY_LABEL[k])} <span>${counts[k]}</span></button>`
+  ).join('');
+  document.getElementById('bulk-filters').classList.remove('hidden');
+  applyBulkFilters();
+}
+
+function toggleBulkRarity(btn) {
+  const r = btn.dataset.r;
+  if (bulkRarOn.has(r)) bulkRarOn.delete(r); else bulkRarOn.add(r);
+  btn.classList.toggle('on', bulkRarOn.has(r));
+  applyBulkFilters();
+}
+
+/* "1-100, 125, 200-" → [[1,100],[125,125],[200,Infinity]]; blank → null (no filter) */
+function parseNumFilter(str) {
+  const out = [];
+  for (const part of str.split(',')) {
+    const t = part.trim();
+    let m;
+    if (!t) continue;
+    if ((m = t.match(/^(\d+)$/)))                    out.push([+m[1], +m[1]]);
+    else if ((m = t.match(/^(\d+)\s*[-–]\s*(\d+)$/))) out.push([Math.min(+m[1], +m[2]), Math.max(+m[1], +m[2])]);
+    else if ((m = t.match(/^(\d+)\s*[-–]$/)))         out.push([+m[1], Infinity]);
+    else if ((m = t.match(/^[-–]\s*(\d+)$/)))         out.push([0, +m[1]]);
   }
-  document.getElementById('bulk-status').textContent =
-    `${bulkCards.length} cards — click to select`;
-  document.getElementById('bcg').innerHTML = bulkCards.map((c, i) => {
+  return out.length ? out : null;
+}
+
+/* Filters define the selection: everything that matches is selected, the rest is hidden */
+function applyBulkFilters() {
+  const ranges = parseNumFilter(document.getElementById('bulk-nums').value);
+  bulkVisible = [];
+  bulkCards.forEach((c, i) => {
+    if (!bulkRarOn.has(bulkBucket(c))) return;
+    if (ranges) {
+      if (!/^\d+$/.test(c.number)) return;
+      const n = +c.number;
+      if (!ranges.some(([lo, hi]) => n >= lo && n <= hi)) return;
+    }
+    bulkVisible.push(i);
+  });
+  bulkSelected = new Set(bulkVisible);
+  renderBulkGrid();
+}
+
+function renderBulkGrid() {
+  const status = document.getElementById('bulk-status');
+  if (!bulkCards.length) { status.textContent = 'No cards found in this set.'; return; }
+  status.textContent = bulkVisible.length
+    ? `${bulkVisible.length} of ${bulkCards.length} cards match — click a card to deselect it`
+    : `No cards match these filters (${bulkCards.length} in set)`;
+  document.getElementById('bcg').innerHTML = bulkVisible.map(i => {
+    const c = bulkCards[i];
     const img = c.images?.small || '';
     const num = c.number ? `#${c.number}` : '';
-    return `<div class="bcard${bulkSelected.has(i) ? ' sel' : ''}" onclick="toggleBCard(${i})">
+    return `<div class="bcard${bulkSelected.has(i) ? ' sel' : ''}" data-i="${i}" onclick="toggleBCard(${i})">
       ${img
         ? `<img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy">`
         : `<div class="bcard-ph">${esc(c.name)}</div>`}
       <div class="bcard-nm">${num} ${esc(c.name)}</div>
     </div>`;
   }).join('');
-  document.getElementById('bcg').classList.remove('hidden');
+  document.getElementById('bcg').classList.toggle('hidden', !bulkVisible.length);
   document.getElementById('bulk-bar').classList.remove('hidden');
   document.getElementById('bulk-vrow').classList.remove('hidden');
   updateBulkCount();
@@ -885,16 +989,15 @@ function renderBulkGrid() {
 function toggleBCard(i) {
   if (bulkSelected.has(i)) bulkSelected.delete(i);
   else bulkSelected.add(i);
-  const cards = document.querySelectorAll('.bcard');
-  if (cards[i]) cards[i].classList.toggle('sel', bulkSelected.has(i));
+  document.querySelector(`.bcard[data-i="${i}"]`)?.classList.toggle('sel', bulkSelected.has(i));
   updateBulkCount();
 }
 
 function selectAllBulk(on) {
-  if (on) for (let i = 0; i < bulkCards.length; i++) bulkSelected.add(i);
+  if (on) bulkVisible.forEach(i => bulkSelected.add(i));
   else bulkSelected.clear();
-  document.querySelectorAll('.bcard').forEach((el, i) =>
-    el.classList.toggle('sel', bulkSelected.has(i)));
+  document.querySelectorAll('.bcard').forEach(el =>
+    el.classList.toggle('sel', bulkSelected.has(+el.dataset.i)));
   updateBulkCount();
 }
 
