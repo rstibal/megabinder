@@ -176,6 +176,15 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .rchip span{opacity:.7;font-weight:500;margin-left:2px}
 .rchip.on{background:var(--red);border-color:var(--red);color:#fff}
 .rchip.rev.on{background:#6366f1;border-color:#6366f1}
+@media (max-width:520px){
+  .bulk-filters{padding:8px 10px;gap:6px}
+  .bulk-frow{flex-direction:column;align-items:stretch;gap:4px}
+  .bulk-frow>label{width:auto}
+  .bulk-frow .fi{min-width:0}
+  .rchips{gap:4px}
+  .rchip{padding:3px 8px;font-size:.7rem}
+  .bcg{max-height:46vh}
+}
 .bulk-none{font-size:.74rem;color:var(--muted);padding:4px 0}
 .bcard.rh{border-color:rgba(99,102,241,.55)}
 .bcard.rh::after{content:'RH';position:absolute;top:4px;right:4px;z-index:2;font-size:.5rem;font-weight:800;line-height:1;padding:3px 4px;border-radius:4px;background:#6366f1;color:#fff}
@@ -380,7 +389,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
       </div>
       <div class="bulk-frow">
         <label>Numbers</label>
-        <input class="fi" id="bulk-nums" placeholder="e.g. 1-198, 215 — blank = all" oninput="applyBulkFilters()" autocomplete="off">
+        <input class="fi" id="bulk-nums" placeholder="e.g. 1-198, 215 (blank = all)" oninput="applyBulkFilters()" autocomplete="off">
       </div>
     </div>
     <div class="bulk-bar hidden" id="bulk-bar">
