@@ -50,6 +50,20 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .nav-btn{background:transparent;border:1px solid var(--border);color:var(--text);border-radius:7px;width:34px;height:34px;font-size:1.2rem;line-height:1;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center}
 .nav-btn:hover:not(:disabled){background:var(--surf2)}.nav-btn:disabled{opacity:.25;cursor:default}
 
+.lbl{display:none}
+@media (min-width:900px){
+  body{padding-left:230px}
+  .header{position:fixed;left:0;top:0;bottom:0;width:230px;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:18px;padding:18px 14px;border-bottom:none;border-right:1px solid var(--border);overflow-y:auto}
+  .binder-ctrl{flex:none;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:8px}
+  .binder-sel{max-width:none;width:100%}
+  .binder-ctrl .btn{text-align:left}
+  .binder-ctrl .btn-red{text-align:center}
+  #sync-btn,.binder-ctrl .btn[title="Binder settings"]{padding:7px 14px}
+  .lbl{display:inline}
+  .hstats{order:-1;margin-top:0}
+  .binder-ctrl{order:1}.hstats{order:2}
+  .viewport{padding:28px 32px 48px}
+}
 @media (max-width:640px){
   .header{padding:10px 12px}
   .header>div:last-child{margin-left:auto}
@@ -228,12 +242,12 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
   </div>
   <div class="binder-ctrl">
     <select class="binder-sel" id="binder-sel" onchange="switchBinder(this.value)"></select>
-    <button class="btn btn-ghost" style="padding:6px 10px" onclick="openSettings()" title="Binder settings">⚙️</button>
+    <button class="btn btn-ghost" style="padding:6px 10px" onclick="openSettings()" title="Binder settings">⚙️<span class="lbl"> Settings</span></button>
     <button class="btn btn-ghost" onclick="openBulk()">+ Add by Set</button>
-    <button class="btn btn-ghost" id="sync-btn" data-state="off" onclick="openSync()" title="Cloud sync (off)">☁</button>
+    <button class="btn btn-ghost" id="sync-btn" data-state="off" onclick="openSync()" title="Cloud sync (off)">☁<span class="lbl"> Cloud sync</span></button>
     <button class="btn btn-red" onclick="openNewBinder()">+ New Binder</button>
   </div>
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+  <div class="hstats" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <span class="chip"><b id="hc">0</b> cards</span>
     <span class="chip chip-need hidden" id="hneed"><b id="hn">0</b> to get</span>
     <span class="chip"><b id="hf">0</b>/<b id="ht">0</b> slots</span>
