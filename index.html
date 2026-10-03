@@ -25,6 +25,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 ::-webkit-scrollbar-track{background:transparent}
 
 /* ── Buttons ─────────────────────────────────────────────── */
+.hidden{display:none!important}
 .btn{padding:7px 14px;border-radius:7px;border:none;font-size:.82rem;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
 .btn-red{background:var(--red);color:#fff}.btn-red:hover{background:#dc2626}
 .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}.btn-ghost:hover{background:var(--surf2);color:var(--text)}
@@ -66,6 +67,15 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .slot-need{box-shadow:0 0 0 2px rgba(0,0,0,.25) inset!important;background:rgba(0,0,0,.12)}
 .nbadge{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);z-index:2;font-size:.55rem;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:2px 6px;border-radius:4px;background:rgba(15,23,42,.85);color:#e2e8f0;white-space:nowrap}
 .chip-need b{color:#fbbf24}
+#sync-btn{padding:6px 10px}
+#sync-btn[data-state=idle]{color:#4ade80}
+#sync-btn[data-state=busy]{color:#fbbf24}
+#sync-btn[data-state=error]{color:#f87171;border-color:#7f1d1d}
+.syncp{font-size:.82rem;color:var(--muted);line-height:1.5;margin-bottom:10px}
+.syncp a{color:#93c5fd}
+.syncp b{color:var(--text)}
+.sync-stat{font-size:.88rem;margin-bottom:12px}
+.sync-stat.err{color:#fca5a5}
 .bcard.need img{filter:grayscale(1) brightness(.8);opacity:.45}
 .bcard.need{border-color:transparent}
 
@@ -215,6 +225,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     <select class="binder-sel" id="binder-sel" onchange="switchBinder(this.value)"></select>
     <button class="btn btn-ghost" style="padding:6px 10px" onclick="openSettings()" title="Binder settings">⚙️</button>
     <button class="btn btn-ghost" onclick="openBulk()">+ Add by Set</button>
+    <button class="btn btn-ghost" id="sync-btn" data-state="off" onclick="openSync()" title="Cloud sync (off)">☁</button>
     <button class="btn btn-red" onclick="openNewBinder()">+ New Binder</button>
   </div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -326,6 +337,29 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 
 
 <!-- ═══════════════════════ SETTINGS MODAL ══════════════════ -->
+<div class="overlay hidden" id="m-sync">
+  <div class="modal m-set">
+    <h2>Cloud Sync</h2>
+    <div id="sync-off">
+      <p class="syncp">Keep your binders in sync across devices using a <b>private GitHub gist</b> in your own account. There's no server: data goes straight from this page to GitHub.</p>
+      <p class="syncp">1. <a href="https://github.com/settings/tokens/new?scopes=gist&description=pokemon-binder" target="_blank" rel="noopener">Create a token</a> (classic, with only the <b>gist</b> permission).<br>2. Paste it below, here and on each device you use.</p>
+      <input class="fi" id="sync-token" type="password" placeholder="Paste token" autocomplete="off" spellcheck="false">
+      <p class="syncp" style="margin-top:10px">The token is stored in this browser only. Use one with just the gist permission, and don't connect on a shared computer.</p>
+    </div>
+    <div id="sync-on" class="hidden">
+      <p class="sync-stat" id="sync-status"></p>
+      <p class="syncp">Changes sync automatically a few seconds after you make them, and when you return to this tab. Every save is kept in the gist's revision history on GitHub.</p>
+    </div>
+    <div class="sync-stat err hidden" id="sync-err"></div>
+    <div class="mfoot">
+      <button class="btn btn-ghost" onclick="closeM('m-sync')">Close</button>
+      <button class="btn btn-red" id="sync-connect" onclick="syncConnect()">Connect</button>
+      <button class="btn btn-red hidden" id="sync-now" onclick="syncNow(true)">Sync now</button>
+      <button class="btn btn-danger hidden" id="sync-off-btn" onclick="syncDisconnect()">Disconnect</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay hidden" id="m-set">
   <div class="modal m-set">
     <h2>Binder Settings</h2>
@@ -453,7 +487,11 @@ function load() {
   if (!st.binders) st.binders = [];
   if (!st.activeId && st.binders.length) st.activeId = st.binders[0].id;
 }
-function save() { try { localStorage.setItem(SK, JSON.stringify(st)); } catch {} }
+function save() {
+  st.modified = Date.now();
+  try { localStorage.setItem(SK, JSON.stringify(st)); } catch {}
+  queueSync();
+}
 
 /* ── Binder helpers ───────────────────────────────────────── */
 const ab  = () => st.binders.find(b => b.id === st.activeId) || null;
@@ -1121,12 +1159,189 @@ document.querySelectorAll('.overlay').forEach(el => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') ['m-add','m-det','m-new','m-set','m-bulk'].forEach(closeM);
+  if (e.key === 'Escape') ['m-add','m-det','m-new','m-set','m-bulk','m-sync'].forEach(closeM);
   const addOpen = !document.getElementById('m-add').classList.contains('hidden');
   if (!addOpen) {
     if (e.key === 'ArrowLeft')  goPage(-1);
     if (e.key === 'ArrowRight') goPage(1);
   }
+});
+
+/* ── Cloud sync (private GitHub gist) ─────────────────────── */
+/* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
+   last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
+const SK_SYNC   = 'pkSync1';
+const GIST_DESC = 'pokemon-binder data (do not edit)';
+const GIST_FILE = 'pokemon-binder.json';
+let sync = { token: '', gistId: '', base: 0 };
+let syncBusy = false, syncT = null, syncLast = 0;
+
+function loadSync() {
+  try { Object.assign(sync, JSON.parse(localStorage.getItem(SK_SYNC) || '{}')); } catch {}
+}
+function saveSync() { try { localStorage.setItem(SK_SYNC, JSON.stringify(sync)); } catch {} }
+
+function setSync(state, msg) {
+  const btn = document.getElementById('sync-btn');
+  btn.dataset.state = state;
+  btn.title = `Cloud sync: ${msg}`;
+  const on = !!sync.token;
+  document.getElementById('sync-off').classList.toggle('hidden', on);
+  document.getElementById('sync-on').classList.toggle('hidden', !on);
+  document.getElementById('sync-connect').classList.toggle('hidden', on);
+  document.getElementById('sync-now').classList.toggle('hidden', !on);
+  document.getElementById('sync-off-btn').classList.toggle('hidden', !on);
+  const stat = document.getElementById('sync-status');
+  stat.textContent = msg;
+  const err = document.getElementById('sync-err');
+  err.textContent = state === 'error' ? msg : '';
+  err.classList.toggle('hidden', state !== 'error');
+  if (state === 'error') stat.textContent = 'Not synced';
+}
+
+async function gh(path, opts = {}) {
+  const r = await fetch(`https://api.github.com${path}`, {
+    ...opts,
+    headers: {
+      Authorization: `Bearer ${sync.token}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+    },
+  });
+  if (r.status === 401) throw new Error('GitHub rejected the token. Create a new one and reconnect.');
+  if (r.status === 403 || r.status === 404) throw new Error(`GitHub refused the request (${r.status}). Check the token has the gist permission.`);
+  if (!r.ok) throw new Error(`GitHub error ${r.status}`);
+  return r.json();
+}
+
+async function findGist() {
+  for (let page = 1; page <= 5; page++) {
+    const list = await gh(`/gists?per_page=100&page=${page}`);
+    const hit = list.find(g => g.description === GIST_DESC && g.files?.[GIST_FILE]);
+    if (hit) return hit;
+    if (list.length < 100) break;
+  }
+  return null;
+}
+
+async function readRemote(id) {
+  const g = await gh(`/gists/${id}`);
+  const f = g.files?.[GIST_FILE];
+  if (!f) return null;
+  const text = f.truncated ? await (await fetch(f.raw_url)).text() : f.content;   // big files come back truncated
+  return JSON.parse(text);
+}
+
+async function writeRemote(data) {
+  const files = { [GIST_FILE]: { content: JSON.stringify(data) } };
+  if (sync.gistId) {
+    await gh(`/gists/${sync.gistId}`, { method: 'PATCH', body: JSON.stringify({ files }) });
+  } else {
+    const g = await gh('/gists', { method: 'POST', body: JSON.stringify({ description: GIST_DESC, public: false, files }) });
+    sync.gistId = g.id;
+  }
+}
+
+function applyRemote(remote) {
+  try { localStorage.setItem(SK + '.bak', localStorage.getItem(SK) || ''); } catch {}   // keep what we're replacing
+  st = remote;
+  if (!st.binders) st.binders = [];
+  if (!st.binders.some(b => b.id === st.activeId)) st.activeId = st.binders[0]?.id || null;
+  try { localStorage.setItem(SK, JSON.stringify(st)); } catch {}
+  pg = 0;
+  renderAll();
+}
+
+const fmtTime = t => t ? new Date(t).toLocaleString() : 'never';
+const countCards = d => (d.binders || []).reduce((n, b) => n + b.slots.filter(Boolean).length, 0);
+
+function askConflict(remote) {
+  return confirm(
+    'This device and the cloud both changed since the last sync.\n\n' +
+    `This device: ${countCards(st)} cards, last changed ${fmtTime(st.modified)}\n` +
+    `Cloud: ${countCards(remote)} cards, last changed ${fmtTime(remote.modified)}\n\n` +
+    'OK = use the cloud copy (replaces this device)\n' +
+    'Cancel = keep this device (overwrites the cloud; the old cloud copy stays in the gist history)'
+  ) ? 'pull' : 'push';
+}
+
+async function syncNow(manual) {
+  if (!sync.token || syncBusy) return;
+  syncBusy = true;
+  setSync('busy', 'Syncing…');
+  try {
+    if (!sync.gistId) sync.gistId = (await findGist())?.id || '';
+    const remote = sync.gistId ? await readRemote(sync.gistId) : null;
+    const local = st.modified || 0, rmod = remote?.modified || 0;
+    let action;
+    if (!remote)                       action = 'push';   // nothing in the cloud yet
+    else if (rmod === local)           action = 'none';
+    else if (!st.binders.length)       action = 'pull';
+    else if (!remote.binders?.length)  action = 'push';
+    else {
+      const lc = local > sync.base, rc = rmod > sync.base;
+      action = lc && rc ? askConflict(remote) : (rc ? 'pull' : 'push');
+    }
+    if (action === 'push') {
+      if (!st.modified) { st.modified = Date.now(); try { localStorage.setItem(SK, JSON.stringify(st)); } catch {} }
+      const sent = st.modified;
+      await writeRemote(st);
+      sync.base = sent;
+    } else if (action === 'pull') {
+      applyRemote(remote);
+      sync.base = st.modified || 0;
+    } else {
+      sync.base = local;
+    }
+    saveSync();
+    syncLast = Date.now();
+    setSync('idle', `Synced ${new Date().toLocaleTimeString()}`);
+  } catch (e) {
+    setSync('error', e.message || 'Sync failed');
+  } finally {
+    syncBusy = false;
+  }
+  if (sync.token && (st.modified || 0) > sync.base) queueSync();   // edited while syncing
+}
+
+function queueSync() {
+  if (!sync.token) return;
+  clearTimeout(syncT);
+  syncT = setTimeout(() => syncNow(), 3000);
+}
+
+function openSync() {
+  document.getElementById('sync-token').value = '';
+  setSync(document.getElementById('sync-btn').dataset.state, document.getElementById('sync-btn').title.replace(/^Cloud sync: /, ''));
+  openM('m-sync');
+}
+
+async function syncConnect() {
+  const token = document.getElementById('sync-token').value.trim();
+  if (!token) return;
+  sync = { token, gistId: '', base: 0 };
+  await syncNow(true);
+  if (document.getElementById('sync-btn').dataset.state === 'error') {
+    const msg = document.getElementById('sync-err').textContent;
+    sync = { token: '', gistId: '', base: 0 };   // don't keep a token that didn't work
+    saveSync();
+    setSync('off', 'off');
+    const err = document.getElementById('sync-err');
+    err.textContent = msg; err.classList.remove('hidden');
+    return;
+  }
+  saveSync();
+}
+
+function syncDisconnect() {
+  if (!confirm('Disconnect cloud sync on this device? The data in your gist is kept.')) return;
+  sync = { token: '', gistId: '', base: 0 };
+  saveSync();
+  setSync('off', 'off');
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && sync.token && Date.now() - syncLast > 30000) syncNow();
 });
 
 /* ── Util ─────────────────────────────────────────────────── */
@@ -1138,6 +1353,10 @@ function esc(s) {
 
 /* ── Init ─────────────────────────────────────────────────── */
 load();
+loadSync();
+setSync(sync.token ? 'idle' : 'off', sync.token ? 'connected' : 'off');
+if (sync.token) syncNow();
+navigator.storage?.persist?.();   // ask the browser not to evict saved binders under storage pressure
 loadSets();   // background — fetches & caches all set names for autocomplete
 renderAll();
 </script>
