@@ -171,6 +171,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 /* ── Detail modal ────────────────────────────────────────── */
 .m-det{max-width:420px}
 .detimgw{position:relative;width:min(100%,340px,calc((100vh - 280px)*.714));aspect-ratio:2.5/3.5;border-radius:10px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.55);margin:0 auto 16px}
+.detnav{display:flex;align-items:center;justify-content:center;gap:8px;margin:-4px 0 12px}
 .detimg{width:100%;height:100%;object-fit:cover;display:block}
 .detimgw.need .detimg{filter:grayscale(1) brightness(.8);opacity:.5}
 .detinfo{text-align:center;margin-bottom:4px}.detinfo h3{font-size:1.05rem}.detinfo p{font-size:.78rem;color:var(--muted);margin-top:4px}
@@ -321,6 +322,11 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 <div class="overlay hidden" id="m-det">
   <div class="modal m-det">
     <div class="detimgw" id="det-wrap"><img class="detimg" id="det-img" src="" alt=""></div>
+    <div class="detnav">
+      <button class="nav-btn" id="det-prev" onclick="detStep(-1)" aria-label="Previous card">‹</button>
+      <span class="pg-label" id="det-pos"></span>
+      <button class="nav-btn" id="det-next" onclick="detStep(1)" aria-label="Next card">›</button>
+    </div>
     <div class="detinfo">
       <h3 id="det-name"></h3>
       <p id="det-meta"></p>
@@ -837,10 +843,26 @@ function doAdd() {
 }
 
 /* ── Detail modal ─────────────────────────────────────────── */
+let detIdx = -1;
+function detStep(d) {
+  const b = ab(); if (!b) return;
+  for (let i = detIdx + d; i >= 0 && i < b.slots.length; i += d) {
+    if (b.slots[i]) { openDetail(i); return; }
+  }
+}
+
 function openDetail(idx) {
   const b = ab(); if (!b) return;
   const c = b.slots[idx];
   if (!c) { openAdd(idx); return; }
+  detIdx = idx;
+  const filled = b.slots.reduce((a, x, i) => (x && a.push(i), a), []);
+  const at = filled.indexOf(idx);
+  document.getElementById('det-pos').textContent = `${at + 1} of ${filled.length}`;
+  document.getElementById('det-prev').disabled = at <= 0;
+  document.getElementById('det-next').disabled = at >= filled.length - 1;
+  const dp = Math.floor(idx / spp(b));
+  if (dp !== pg) { pg = dp; renderBinder(); }   // keep the page behind the popup in step
   document.getElementById('det-img').src = c.imageLarge || c.imageSmall || '';
   const need = c.owned === false;
   document.getElementById('det-wrap').className =
@@ -1187,11 +1209,11 @@ document.querySelectorAll('.overlay').forEach(el => {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') ['m-add','m-det','m-new','m-set','m-bulk','m-sync'].forEach(closeM);
-  const addOpen = !document.getElementById('m-add').classList.contains('hidden');
-  if (!addOpen) {
-    if (e.key === 'ArrowLeft')  goPage(-1);
-    if (e.key === 'ArrowRight') goPage(1);
-  }
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
+  const d = e.key === 'ArrowLeft' ? -1 : 1;
+  if (!document.getElementById('m-det').classList.contains('hidden')) detStep(d);
+  else if (!document.querySelector('.overlay:not(.hidden)')) goPage(d);
 });
 
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
