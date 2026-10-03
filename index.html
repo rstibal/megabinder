@@ -108,9 +108,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 /* ── Variant overlay effects ─────────────────────────────── */
 @keyframes sh{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
 
-.v-reverse_holo{box-shadow:0 0 0 1.5px rgba(125,211,252,.7),0 4px 12px rgba(56,189,248,.3)!important}
-.v-reverse_holo::before{content:'';position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.4) 46%,rgba(186,230,253,.3) 50%,transparent 66%),repeating-linear-gradient(45deg,rgba(255,255,255,.1) 0 2px,rgba(56,189,248,.08) 2px 6px),linear-gradient(135deg,rgba(56,189,248,.16),rgba(129,140,248,.14),rgba(45,212,191,.16));background-size:250% 100%,auto,auto;animation:rvsweep 2.8s ease-in-out infinite;mix-blend-mode:screen;pointer-events:none;z-index:1}
-@keyframes rvsweep{0%{background-position:130% 0,0 0,0 0}100%{background-position:-30% 0,0 0,0 0}}
+.v-reverse_holo::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(96,165,250,.2),rgba(167,139,250,.18),rgba(52,211,153,.18),rgba(251,191,36,.2),rgba(96,165,250,.2));background-size:300% 300%;animation:sh 3s ease infinite;pointer-events:none;z-index:1}
 .v-holo::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(250,204,21,.25),rgba(251,146,60,.2),rgba(34,211,238,.22),rgba(168,85,247,.2),rgba(250,204,21,.25));background-size:400% 400%;animation:sh 2.5s ease infinite;pointer-events:none;z-index:1}
 .v-full_art{box-shadow:0 0 0 2.5px #059669,0 4px 18px rgba(5,150,105,.45)!important}
 .v-full_art::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(52,211,153,.18),rgba(16,185,129,.12));pointer-events:none;z-index:1}
@@ -121,7 +119,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 
 /* ── Variant badge ───────────────────────────────────────── */
 .vbadge{position:absolute;top:4px;right:4px;font-size:.44rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:2px 5px;border-radius:3px;z-index:3;pointer-events:none;line-height:1.4;backdrop-filter:blur(2px)}
-.vb-reverse_holo{background:#0ea5e9;color:#fff}
+.vb-reverse_holo{background:rgba(96,165,250,.85);color:#fff}
 .vb-holo{background:rgba(250,204,21,.9);color:#3d2600}
 .vb-full_art{background:rgba(5,150,105,.88);color:#fff}
 .vb-rainbow{background:linear-gradient(90deg,#f43f5e,#a855f7);color:#fff}
