@@ -393,7 +393,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     <div id="sync-off">
       <p class="syncp">Keep your binders in sync across devices using a <b>private GitHub gist</b> in your own account. There's no server: data goes straight from this page to GitHub.</p>
       <p class="syncp">1. <a href="https://github.com/settings/tokens/new?scopes=gist&description=pokemon-binder" target="_blank" rel="noopener">Create a token</a> (classic, with only the <b>gist</b> permission).<br>2. Paste it below, here and on each device you use.</p>
-      <input class="fi" id="sync-token" type="password" placeholder="Paste token" autocomplete="off" spellcheck="false">
+      <input class="fi" id="sync-token" type="text" style="-webkit-text-security:disc" name="gh-sync-key" placeholder="Paste token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other">
       <p class="syncp" style="margin-top:10px">The token is stored in this browser only. Use one with just the gist permission, and don't connect on a shared computer.</p>
     </div>
     <div id="sync-on" class="hidden">
