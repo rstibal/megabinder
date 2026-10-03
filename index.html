@@ -1021,11 +1021,13 @@ function updateBulkCount() {
   btn.textContent = n > 0 ? `Add ${n} Card${n > 1 ? 's' : ''}` : 'Add Selected';
 }
 
-/* Finish of a normal-slot copy, from its rarity (full art / rainbow styling) or else its TCGdex variants */
+/* Finish of a normal-slot copy, from its rarity (full art / gold / rainbow styling) or else its TCGdex variants */
 const FULL_ART_RARITY = ['Ultra Rare', 'Illustration rare', 'Special illustration rare', 'Full Art Trainer', 'Shiny Ultra Rare'];
-const RAINBOW_RARITY  = ['Hyper rare', 'Secret Rare', 'Mega Hyper Rare'];
+const GOLD_RARITY     = ['Hyper rare', 'Mega Hyper Rare'];   // gold-styled in Scarlet & Violet onward
+const RAINBOW_RARITY  = ['Secret Rare'];                      // rainbow-styled in the Sword & Shield era
 function autoFinish(c) {
   if (FULL_ART_RARITY.includes(c.rarity)) return 'full_art';
+  if (GOLD_RARITY.includes(c.rarity))     return 'gold';
   if (RAINBOW_RARITY.includes(c.rarity))  return 'rainbow';
   if (c.v?.n || !c.v?.h) return 'normal';
   return 'holo';
