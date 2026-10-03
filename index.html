@@ -170,7 +170,9 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 
 /* ── Detail modal ────────────────────────────────────────── */
 .m-det{max-width:360px}
-.detimg{width:170px;aspect-ratio:2.5/3.5;object-fit:cover;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.55);margin:0 auto 16px;display:block}
+.detimgw{position:relative;width:170px;aspect-ratio:2.5/3.5;border-radius:10px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.55);margin:0 auto 16px}
+.detimg{width:100%;height:100%;object-fit:cover;display:block}
+.detimgw.need .detimg{filter:grayscale(1) brightness(.8);opacity:.5}
 .detinfo{text-align:center;margin-bottom:4px}.detinfo h3{font-size:1.05rem}.detinfo p{font-size:.78rem;color:var(--muted);margin-top:4px}
 .detvar{text-align:center;font-size:.8rem;font-weight:600;margin-top:6px;color:#f59e0b;min-height:20px}
 
@@ -318,7 +320,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 <!-- ═══════════════════════ DETAIL MODAL ════════════════════ -->
 <div class="overlay hidden" id="m-det">
   <div class="modal m-det">
-    <img class="detimg" id="det-img" src="" alt="">
+    <div class="detimgw" id="det-wrap"><img class="detimg" id="det-img" src="" alt=""></div>
     <div class="detinfo">
       <h3 id="det-name"></h3>
       <p id="det-meta"></p>
@@ -840,6 +842,9 @@ function openDetail(idx) {
   const c = b.slots[idx];
   if (!c) { openAdd(idx); return; }
   document.getElementById('det-img').src = c.imageLarge || c.imageSmall || '';
+  const need = c.owned === false;
+  document.getElementById('det-wrap').className =
+    'detimgw' + (need ? ' need' : c.variant && c.variant !== 'normal' ? ` v-${c.variant}` : '');
   document.getElementById('det-name').textContent = c.name;
   document.getElementById('det-meta').textContent =
     [c.set, c.number ? `#${c.number}` : '', c.rarity].filter(Boolean).join(' · ');
