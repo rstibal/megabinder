@@ -180,8 +180,6 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .bcard.rh{border-color:rgba(99,102,241,.55)}
 .bcard.rh::after{content:'RH';position:absolute;top:4px;right:4px;z-index:2;font-size:.5rem;font-weight:800;line-height:1;padding:3px 4px;border-radius:4px;background:#6366f1;color:#fff}
 .bcard.rh.sel{border-color:#6366f1}
-.bulk-vrow{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
-.bulk-vrow label{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;flex-shrink:0}
 </style>
 </head>
 <body>
@@ -393,18 +391,6 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
       <span class="bulk-count"><b id="bulk-sel-count">0</b> selected</span>
     </div>
     <div class="bcg hidden" id="bcg"></div>
-    <div class="bulk-vrow hidden" id="bulk-vrow">
-      <label>Finish</label>
-      <div class="vopts">
-        <button class="vopt on" data-v="auto"         onclick="pickBV(this)" title="Use each card's real finish from TCGdex (Normal, or Holo for holo-only cards). Reverse holo copies are always Rev. Holo.">Auto</button>
-        <button class="vopt"    data-v="normal"       onclick="pickBV(this)">Normal</button>
-        <button class="vopt"    data-v="reverse_holo" onclick="pickBV(this)">Rev. Holo</button>
-        <button class="vopt"    data-v="holo"         onclick="pickBV(this)">Holo</button>
-        <button class="vopt"    data-v="full_art"     onclick="pickBV(this)">Full Art</button>
-        <button class="vopt"    data-v="rainbow"      onclick="pickBV(this)">Rainbow</button>
-        <button class="vopt"    data-v="gold"         onclick="pickBV(this)">Gold</button>
-      </div>
-    </div>
     <div class="mfoot">
       <button class="btn btn-ghost" onclick="closeM('m-bulk')">Cancel</button>
       <button class="btn btn-red" id="bulk-ok" disabled onclick="doBulkAdd()">Add Selected</button>
@@ -447,7 +433,6 @@ let bulkSelected   = new Set();
 let bulkVisible    = [];   // entry keys ('<cardIdx>:n' normal / '<cardIdx>:r' reverse holo) matching the filters
 let bulkRarOn      = new Set();   // rarity buckets enabled for normal copies
 let bulkRevOn      = new Set();   // rarity buckets enabled for reverse holo copies
-let bulkVariant    = 'auto';
 let bulkSetMatches = [];
 let bsT            = null;
 
@@ -837,15 +822,14 @@ function openBulk() {
   const b = ab();
   if (!b) { alert('Create a binder first.'); return; }
   bulkCards = []; bulkSelected.clear(); bulkVisible = []; bulkRarOn.clear(); bulkRevOn.clear();
-  bulkVariant = 'auto'; bulkSetMatches = [];
+  bulkSetMatches = [];
   document.getElementById('bulk-set-in').value = '';
   document.getElementById('bulk-nums').value = '';
   document.getElementById('bulk-status').textContent = 'Search for a set above to load its cards.';
-  ['bulk-bar','bcg','bulk-vrow','bulk-filters','bulk-set-drop'].forEach(id =>
+  ['bulk-bar','bcg','bulk-filters','bulk-set-drop'].forEach(id =>
     document.getElementById(id).classList.add('hidden'));
   document.getElementById('bulk-ok').disabled = true;
   document.getElementById('bulk-ok').textContent = 'Add Selected';
-  document.querySelectorAll('#bulk-vrow .vopt').forEach(btn => btn.classList.toggle('on', btn.dataset.v === 'auto'));
   openM('m-bulk');
   setTimeout(() => document.getElementById('bulk-set-in').focus(), 60);
 }
@@ -878,7 +862,7 @@ function pickBulkSet(i) {
 
 async function loadBulkCards(setId) {
   bulkCards = []; bulkSelected.clear(); bulkVisible = [];
-  ['bulk-bar','bcg','bulk-vrow','bulk-filters'].forEach(id =>
+  ['bulk-bar','bcg','bulk-filters'].forEach(id =>
     document.getElementById(id).classList.add('hidden'));
   document.getElementById('bulk-nums').value = '';
   document.getElementById('bulk-ok').disabled = true;
@@ -1011,7 +995,6 @@ function renderBulkGrid() {
   }).join('');
   document.getElementById('bcg').classList.toggle('hidden', !bulkVisible.length);
   document.getElementById('bulk-bar').classList.remove('hidden');
-  document.getElementById('bulk-vrow').classList.remove('hidden');
   updateBulkCount();
 }
 
@@ -1038,16 +1021,14 @@ function updateBulkCount() {
   btn.textContent = n > 0 ? `Add ${n} Card${n > 1 ? 's' : ''}` : 'Add Selected';
 }
 
-/* Finish for a normal-slot copy when "Auto" is chosen, from the card's TCGdex variants */
+/* Finish of a normal-slot copy, from its rarity (full art / rainbow styling) or else its TCGdex variants */
+const FULL_ART_RARITY = ['Ultra Rare', 'Illustration rare', 'Special illustration rare', 'Full Art Trainer', 'Shiny Ultra Rare'];
+const RAINBOW_RARITY  = ['Hyper rare', 'Secret Rare', 'Mega Hyper Rare'];
 function autoFinish(c) {
+  if (FULL_ART_RARITY.includes(c.rarity)) return 'full_art';
+  if (RAINBOW_RARITY.includes(c.rarity))  return 'rainbow';
   if (c.v?.n || !c.v?.h) return 'normal';
   return 'holo';
-}
-
-function pickBV(btn) {
-  document.querySelectorAll('#bulk-vrow .vopt').forEach(b => b.classList.remove('on'));
-  btn.classList.add('on');
-  bulkVariant = btn.dataset.v;
 }
 
 function doBulkAdd() {
@@ -1066,7 +1047,7 @@ function doBulkAdd() {
       rarity:     card.rarity     || '',
       imageSmall: card.images?.small || '',
       imageLarge: card.images?.large || '',
-      variant:    kind === 'r' ? 'reverse_holo' : (bulkVariant === 'auto' ? autoFinish(card) : bulkVariant),
+      variant:    kind === 'r' ? 'reverse_holo' : autoFinish(card),
       addedAt:    Date.now(),
     };
     const ti = nextEmpty(b);
