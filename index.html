@@ -62,6 +62,12 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .slot-filled{overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.3)}
 .slot-filled:hover{transform:translateY(-4px);box-shadow:0 8px 22px rgba(0,0,0,.45);z-index:2}
 .slot-filled img{width:100%;height:100%;object-fit:cover;display:block}
+.slot-need img{filter:grayscale(1) brightness(.8);opacity:.5}
+.slot-need{box-shadow:0 0 0 2px rgba(0,0,0,.25) inset!important;background:rgba(0,0,0,.12)}
+.nbadge{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);z-index:2;font-size:.55rem;font-weight:800;letter-spacing:.6px;text-transform:uppercase;padding:2px 6px;border-radius:4px;background:rgba(15,23,42,.85);color:#e2e8f0;white-space:nowrap}
+.chip-need b{color:#fbbf24}
+.bcard.need img{filter:grayscale(1) brightness(.8);opacity:.45}
+.bcard.need{border-color:transparent}
 
 /* ── Variant overlay effects ─────────────────────────────── */
 @keyframes sh{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
@@ -212,6 +218,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
   </div>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
     <span class="chip"><b id="hc">0</b> cards</span>
+    <span class="chip chip-need hidden" id="hneed"><b id="hn">0</b> to get</span>
     <span class="chip"><b id="hf">0</b>/<b id="ht">0</b> slots</span>
   </div>
 </header>
@@ -292,6 +299,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     <div class="detvar" id="det-var"></div>
     <div class="mfoot">
       <button class="btn btn-ghost" onclick="closeM('m-det')">Close</button>
+      <button class="btn btn-ghost" id="det-own"></button>
       <button class="btn btn-danger" id="det-rm">Remove Card</button>
     </div>
   </div>
@@ -394,10 +402,10 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     </div>
     <div class="bulk-bar hidden" id="bulk-bar">
       <div class="bulk-bar-left">
-        <button class="btn btn-ghost" style="padding:5px 10px;font-size:.78rem" onclick="selectAllBulk(true)">Select All</button>
-        <button class="btn btn-ghost" style="padding:5px 10px;font-size:.78rem" onclick="selectAllBulk(false)">Deselect All</button>
+        <button class="btn btn-ghost" style="padding:5px 10px;font-size:.78rem" onclick="markAllBulk(true)" title="Add the whole selection as cards you own; then click the ones you still need">All Owned</button>
+        <button class="btn btn-ghost" style="padding:5px 10px;font-size:.78rem" onclick="markAllBulk(false)" title="Add the whole selection greyed out, as a plan for a set you're just starting">All Needed</button>
       </div>
-      <span class="bulk-count"><b id="bulk-sel-count">0</b> selected</span>
+      <span class="bulk-count" id="bulk-sel-count"></span>
     </div>
     <div class="bcg hidden" id="bcg"></div>
     <div class="mfoot">
@@ -438,10 +446,10 @@ let nsT = null, ssT = null;  // debounce timers
 
 /* bulk-add state */
 let bulkCards      = [];
-let bulkSelected   = new Set();
 let bulkVisible    = [];   // entry keys ('<cardIdx>:n' normal / '<cardIdx>:r' reverse holo) matching the filters
 let bulkRarOn      = new Set();   // rarity buckets enabled for normal copies
 let bulkRevOn      = new Set();   // rarity buckets enabled for reverse holo copies
+let bulkNeed       = new Set();   // entry keys greyed out as 'still to get' (added to the binder but not owned)
 let bulkSetMatches = [];
 let bsT            = null;
 
@@ -550,8 +558,11 @@ function renderSel() {
 function renderStats() {
   const b = ab();
   const filled = b ? b.slots.filter(Boolean).length : 0;
+  const need   = b ? b.slots.filter(c => c && c.owned === false).length : 0;
   const tp = b ? totalPg(b) : 0;
-  document.getElementById('hc').textContent = filled;
+  document.getElementById('hc').textContent = filled - need;
+  document.getElementById('hn').textContent = need;
+  document.getElementById('hneed').classList.toggle('hidden', !need);
   document.getElementById('hf').textContent = filled;
   document.getElementById('ht').textContent = b ? tp * spp(b) : 0;
 }
@@ -596,13 +607,15 @@ function renderBinder() {
 }
 
 function renderFilled(c, idx) {
-  const vc    = c.variant && c.variant !== 'normal' ? ` v-${c.variant}` : '';
-  const badge = c.variant && c.variant !== 'normal'
-    ? `<span class="vbadge vb-${c.variant}">${VL[c.variant] || c.variant}</span>` : '';
+  const need  = c.owned === false;   // planned card: in the binder layout but not collected yet
+  const vc    = !need && c.variant && c.variant !== 'normal' ? ` v-${c.variant}` : '';
+  const badge = need ? '<span class="nbadge">Need</span>'
+    : c.variant && c.variant !== 'normal'
+      ? `<span class="vbadge vb-${c.variant}">${VL[c.variant] || c.variant}</span>` : '';
   const imgHtml = c.imageSmall
     ? `<img src="${esc(c.imageSmall)}" alt="${esc(c.name)}" loading="lazy">`
     : `<div class="ph"><div class="ph-n">${esc(c.name)}</div><div class="ph-s">${esc(c.set||'')}</div></div>`;
-  return `<div class="slot slot-filled${vc}" onclick="openDetail(${idx})">${imgHtml}${badge}</div>`;
+  return `<div class="slot slot-filled${vc}${need ? ' slot-need' : ''}" onclick="openDetail(${idx})">${imgHtml}${badge}</div>`;
 }
 
 /* ── Navigation ───────────────────────────────────────────── */
@@ -759,6 +772,12 @@ function openDetail(idx) {
     [c.set, c.number ? `#${c.number}` : '', c.rarity].filter(Boolean).join(' · ');
   document.getElementById('det-var').textContent =
     c.variant && c.variant !== 'normal' ? `✦ ${VL[c.variant] || c.variant}` : '';
+  const own = document.getElementById('det-own');
+  own.textContent = c.owned === false ? '✓ Mark as Owned' : 'Mark as Needed';
+  own.onclick = () => {
+    c.owned = c.owned === false ? true : false;
+    save(); renderAll(); closeM('m-det');
+  };
   document.getElementById('det-rm').onclick = () => {
     b.slots[idx] = null;
     // Trim trailing nulls so slot count stays tidy
@@ -830,7 +849,7 @@ function doDelBinder() {
 function openBulk() {
   const b = ab();
   if (!b) { alert('Create a binder first.'); return; }
-  bulkCards = []; bulkSelected.clear(); bulkVisible = []; bulkRarOn.clear(); bulkRevOn.clear();
+  bulkCards = []; bulkNeed.clear(); bulkVisible = []; bulkRarOn.clear(); bulkRevOn.clear();
   bulkSetMatches = [];
   document.getElementById('bulk-set-in').value = '';
   document.getElementById('bulk-nums').value = '';
@@ -870,7 +889,7 @@ function pickBulkSet(i) {
 }
 
 async function loadBulkCards(setId) {
-  bulkCards = []; bulkSelected.clear(); bulkVisible = [];
+  bulkCards = []; bulkNeed.clear(); bulkVisible = [];
   ['bulk-bar','bcg','bulk-filters'].forEach(id =>
     document.getElementById(id).classList.add('hidden'));
   document.getElementById('bulk-nums').value = '';
@@ -979,7 +998,6 @@ function applyBulkFilters() {
     if (bulkRarOn.has(k))             bulkVisible.push(`${i}:n`);
     if (c.v?.r && bulkRevOn.has(k))   bulkVisible.push(`${i}:r`);
   });
-  bulkSelected = new Set(bulkVisible);
   renderBulkGrid();
 }
 
@@ -988,14 +1006,14 @@ function renderBulkGrid() {
   if (!bulkCards.length) { status.textContent = 'No cards found in this set.'; return; }
   const nRev = bulkVisible.filter(k => k.endsWith(':r')).length;
   status.textContent = bulkVisible.length
-    ? `${bulkVisible.length - nRev} cards${nRev ? ` + ${nRev} reverse holos` : ''} match — click one to deselect it`
+    ? `${bulkVisible.length - nRev} cards${nRev ? ` + ${nRev} reverse holos` : ''} will be added — click a card to grey it out (still to get)`
     : `No cards match these filters (${bulkCards.length} in set)`;
   document.getElementById('bcg').innerHTML = bulkVisible.map(key => {
     const [i, kind] = key.split(':');
     const c = bulkCards[+i];
     const img = c.images?.small || '';
     const num = c.number ? `#${c.number}` : '';
-    return `<div class="bcard${kind === 'r' ? ' rh' : ''}${bulkSelected.has(key) ? ' sel' : ''}" data-k="${key}" onclick="toggleBCard('${key}')">
+    return `<div class="bcard${kind === 'r' ? ' rh' : ''}${bulkNeed.has(key) ? ' need' : ' sel'}" data-k="${key}" onclick="toggleBCard('${key}')">
       ${img
         ? `<img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy">`
         : `<div class="bcard-ph">${esc(c.name)}</div>`}
@@ -1008,26 +1026,30 @@ function renderBulkGrid() {
 }
 
 function toggleBCard(key) {
-  if (bulkSelected.has(key)) bulkSelected.delete(key);
-  else bulkSelected.add(key);
-  document.querySelector(`.bcard[data-k="${key}"]`)?.classList.toggle('sel', bulkSelected.has(key));
+  if (bulkNeed.has(key)) bulkNeed.delete(key); else bulkNeed.add(key);
+  const el = document.querySelector(`.bcard[data-k="${key}"]`);
+  el?.classList.toggle('need', bulkNeed.has(key));
+  el?.classList.toggle('sel', !bulkNeed.has(key));
   updateBulkCount();
 }
 
-function selectAllBulk(on) {
-  if (on) bulkVisible.forEach(k => bulkSelected.add(k));
-  else bulkSelected.clear();
-  document.querySelectorAll('.bcard').forEach(el =>
-    el.classList.toggle('sel', bulkSelected.has(el.dataset.k)));
+/* owned = true: everything owned (greying out is then per card); false: start the whole set as "to get" */
+function markAllBulk(owned) {
+  bulkNeed = owned ? new Set() : new Set(bulkVisible);
+  document.querySelectorAll('.bcard').forEach(el => {
+    el.classList.toggle('need', bulkNeed.has(el.dataset.k));
+    el.classList.toggle('sel', !bulkNeed.has(el.dataset.k));
+  });
   updateBulkCount();
 }
 
 function updateBulkCount() {
-  const n = bulkSelected.size;
-  document.getElementById('bulk-sel-count').textContent = n;
+  const n = bulkVisible.length;
+  const need = bulkVisible.filter(k => bulkNeed.has(k)).length;
+  document.getElementById('bulk-sel-count').innerHTML = `<b>${n - need}</b> owned · <b>${need}</b> to get`;
   const btn = document.getElementById('bulk-ok');
   btn.disabled = n === 0;
-  btn.textContent = n > 0 ? `Add ${n} Card${n > 1 ? 's' : ''}` : 'Add Selected';
+  btn.textContent = n > 0 ? `Add ${n} Card${n > 1 ? 's' : ''}` : 'Add Cards';
 }
 
 /* Finish of a normal-slot copy, from its rarity (full art / gold / rainbow styling) or else its TCGdex variants */
@@ -1045,7 +1067,7 @@ function autoFinish(c) {
 function doBulkAdd() {
   const b = ab(); if (!b) return;
   let firstSlot = null;
-  for (const key of bulkVisible.filter(k => bulkSelected.has(k))) {
+  for (const key of bulkVisible) {
     const [i, kind] = key.split(':');
     const card = bulkCards[+i];
     const entry = {
@@ -1059,6 +1081,7 @@ function doBulkAdd() {
       imageSmall: card.images?.small || '',
       imageLarge: card.images?.large || '',
       variant:    kind === 'r' ? 'reverse_holo' : autoFinish(card),
+      owned:      !bulkNeed.has(key),
       addedAt:    Date.now(),
     };
     const ti = nextEmpty(b);
