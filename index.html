@@ -876,7 +876,7 @@ function openDetail(idx) {
   own.textContent = c.owned === false ? '✓ Mark as Owned' : 'Mark as Needed';
   own.onclick = () => {
     c.owned = c.owned === false ? true : false;
-    save(); renderAll(); closeM('m-det');
+    save(); renderAll(); openDetail(idx);   // stay in the popup
   };
   document.getElementById('det-rm').onclick = () => {
     b.slots[idx] = null;
