@@ -51,11 +51,18 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .nav-btn:hover:not(:disabled){background:var(--surf2)}.nav-btn:disabled{opacity:.25;cursor:default}
 
 .lbl{display:none}
+.blist{display:none}
+.bitem{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:1px solid transparent;color:var(--muted);border-radius:7px;padding:7px 10px;font-size:.85rem;cursor:pointer}
+.bitem:hover{background:var(--surf2);color:var(--text)}
+.bitem.on{background:var(--surf2);color:var(--text);border-color:var(--border);font-weight:600}
+.bitem span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bitem .bn{font-size:.72rem;color:var(--muted);flex-shrink:0}
 @media (min-width:900px){
   body{padding-left:230px}
   .header{position:fixed;left:0;top:0;bottom:0;width:230px;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:18px;padding:18px 14px;border-bottom:none;border-right:1px solid var(--border);overflow-y:auto}
   .binder-ctrl{flex:none;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:8px}
-  .binder-sel{max-width:none;width:100%}
+  .binder-sel{display:none}
+  .blist{display:flex;flex-direction:column;gap:2px;margin-bottom:6px;max-height:42vh;overflow-y:auto}
   .binder-ctrl .btn{text-align:left}
   .binder-ctrl .btn-red{text-align:center}
   #sync-btn,.binder-ctrl .btn[title="Binder settings"]{padding:7px 14px}
@@ -242,6 +249,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
   </div>
   <div class="binder-ctrl">
     <select class="binder-sel" id="binder-sel" onchange="switchBinder(this.value)"></select>
+    <nav class="blist" id="blist"></nav>
     <button class="btn btn-ghost" style="padding:6px 10px" onclick="openSettings()" title="Binder settings">⚙️<span class="lbl"> Settings</span></button>
     <button class="btn btn-ghost" onclick="openBulk()">+ Add by Set</button>
     <button class="btn btn-ghost" id="sync-btn" data-state="off" onclick="openSync()" title="Cloud sync (off)">☁<span class="lbl"> Cloud sync</span></button>
@@ -629,6 +637,9 @@ function renderSel() {
         `<option value="${b.id}"${b.id===st.activeId?' selected':''}>${esc(b.name)} (${b.rows}×${b.cols})</option>`
       ).join('')
     : '<option value="">— no binders —</option>';
+  document.getElementById('blist').innerHTML = st.binders.map(b =>
+    `<button class="bitem${b.id===st.activeId?' on':''}" onclick="switchBinder('${b.id}')"><span>${esc(b.name)}</span><span class="bn">${b.slots.filter(Boolean).length}</span></button>`
+  ).join('');
 }
 
 function renderStats() {
