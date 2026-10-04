@@ -26,7 +26,7 @@ A single-file browser app for tracking your physical Pokémon TCG collection. Se
 
 ```bash
 # Clone the repo
-git clone https://github.com/rstibal/pokemon-binder.git
+git clone https://github.com/rstibal/megabinder.git
 
 # Open directly in Chrome — no build step needed
 open index.html          # macOS
@@ -38,7 +38,7 @@ The app needs an internet connection to call the PokéTCG.io API for card search
 
 ### GitHub Pages
 
-Live at https://rstibal.github.io/pokemon-binder/ (served from `main`). The app works as a hosted static page — card search, images, and localStorage all function normally from a served URL.
+Live at https://rstibal.github.io/megabinder/ (served from `main`). The app works as a hosted static page — card search, images, and localStorage all function normally from a served URL.
 
 ---
 
