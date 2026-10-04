@@ -199,6 +199,12 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .cfm-body .cfm-warn{display:block;margin-top:8px;color:#fbbf24}
 .cfm-lbl{display:block;font-size:.8rem;color:var(--muted);margin-bottom:6px}
 .cfm-lbl b{color:var(--text)}
+.cfm.stack .mfoot{flex-direction:column-reverse}
+.cfm-alt{border-color:rgba(255,255,255,.28)!important;color:var(--text)!important}
+.cfm-cmp{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;text-align:left;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:.82rem}
+.cfm-cmp span{color:var(--muted)}
+.cfm-opt{display:block;font-size:.8rem;color:var(--muted);text-align:left;margin-bottom:6px}
+.cfm-opt b{color:var(--text)}
 #cfm-ok:disabled{opacity:.35;cursor:not-allowed}
 .vtot{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:.9rem;margin-bottom:14px}
 .vtot span{color:var(--muted)}.vtot b{text-align:right}
@@ -492,6 +498,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     </div>
     <div class="mfoot">
       <button class="btn btn-ghost" id="cfm-cancel" onclick="closeM('m-confirm')">Cancel</button>
+      <button class="btn btn-ghost cfm-alt hidden" id="cfm-alt" onclick="confirmAlt()"></button>
       <button class="btn btn-red" id="cfm-ok" onclick="confirmOk()"></button>
     </div>
   </div>
@@ -994,6 +1001,15 @@ async function openValue() {
   const body = document.getElementById('val-body');
   const cards = b.slots.filter(c => c && c.tcgId);
   const ids = [...new Set(cards.map(c => c.tcgId))];
+  const todo = ids.filter(id => !cardDetailCache.has(id)).length;
+  if (todo > 100) {   // a big lookup: say so before starting
+    const go = await askConfirm({
+      title: 'This may take a while',
+      body: `Pricing <b>${todo.toLocaleString()} cards</b> means one lookup per card, so a binder this size can take <b>several minutes</b>.<span class="cfm-warn">Keep this tab open until it finishes. If you close the window, prices already found are kept, and pressing the button again carries on from there.</span>`,
+      confirmLabel: 'Start pricing',
+    });
+    if (!go || run !== valRun) return;
+  }
   openM('m-val');
   if (!cards.length) { body.innerHTML = '<p class="vnote">No cards in this binder yet.</p>'; return; }
 
@@ -1092,7 +1108,7 @@ function doSave() {
 
 /* In-app replacement for confirm(). Resolves true/false; typeToConfirm makes the user type a word first. */
 let confirmRes = null, confirmWord = '';
-function askConfirm({ title, body, confirmLabel = 'Confirm', typeToConfirm = '' }) {
+function askConfirm({ title, body, confirmLabel = 'Confirm', typeToConfirm = '', altLabel = '', cancelLabel = 'Cancel' }) {
   return new Promise(res => {
     if (confirmRes) confirmRes(false);
     confirmRes = res;
@@ -1100,6 +1116,11 @@ function askConfirm({ title, body, confirmLabel = 'Confirm', typeToConfirm = '' 
     document.getElementById('cfm-title').textContent = title;
     document.getElementById('cfm-body').innerHTML = body;
     document.getElementById('cfm-ok').textContent = confirmLabel;
+    document.getElementById('cfm-cancel').textContent = cancelLabel;
+    const alt = document.getElementById('cfm-alt');
+    alt.textContent = altLabel;
+    alt.classList.toggle('hidden', !altLabel);
+    document.querySelector('#m-confirm .cfm').classList.toggle('stack', !!altLabel);
     document.getElementById('cfm-type').classList.toggle('hidden', !typeToConfirm);
     document.getElementById('cfm-word').textContent = typeToConfirm;
     const inp = document.getElementById('cfm-input');
@@ -1118,6 +1139,12 @@ function confirmOk() {
   const r = confirmRes; confirmRes = null;
   closeM('m-confirm');
   r?.(true);
+}
+
+function confirmAlt() {
+  const r = confirmRes; confirmRes = null;
+  closeM('m-confirm');
+  r?.('alt');
 }
 
 async function doDelBinder() {
@@ -1502,14 +1529,18 @@ function applyRemote(remote) {
 const fmtTime = t => t ? new Date(t).toLocaleString() : 'never';
 const countCards = d => (d.binders || []).reduce((n, b) => n + b.slots.filter(Boolean).length, 0);
 
-function askConflict(remote) {
-  return confirm(
-    'This device and the cloud both changed since the last sync.\n\n' +
-    `This device: ${countCards(st)} cards, last changed ${fmtTime(st.modified)}\n` +
-    `Cloud: ${countCards(remote)} cards, last changed ${fmtTime(remote.modified)}\n\n` +
-    'OK = use the cloud copy (replaces this device)\n' +
-    'Cancel = keep this device (overwrites the cloud; the old cloud copy stays in the gist history)'
-  ) ? 'pull' : 'push';
+async function askConflict(remote) {
+  const r = await askConfirm({
+    title: 'Both changed since the last sync',
+    body: `<div class="cfm-cmp"><span>This device</span><b>${countCards(st).toLocaleString()} cards · changed ${esc(fmtTime(st.modified))}</b>
+        <span>Cloud</span><b>${countCards(remote).toLocaleString()} cards · changed ${esc(fmtTime(remote.modified))}</b></div>
+      <span class="cfm-opt"><b>Use cloud copy</b> replaces what's on this device.</span>
+      <span class="cfm-opt"><b>Keep this device</b> overwrites the cloud. The old cloud version stays in your gist's revision history.</span>`,
+    confirmLabel: 'Use cloud copy',
+    altLabel: 'Keep this device',
+    cancelLabel: 'Decide later',
+  });
+  return r === true ? 'pull' : r === 'alt' ? 'push' : null;
 }
 
 async function syncNow(manual) {
@@ -1527,7 +1558,8 @@ async function syncNow(manual) {
     else if (!remote.binders?.length)  action = 'push';
     else {
       const lc = local > sync.base, rc = rmod > sync.base;
-      action = lc && rc ? askConflict(remote) : (rc ? 'pull' : 'push');
+      action = lc && rc ? await askConflict(remote) : (rc ? 'pull' : 'push');
+      if (!action) throw new Error('Sync paused: this device and the cloud both changed. Choose which to keep to continue syncing.');
     }
     if (action === 'push') {
       if (!st.modified) { st.modified = Date.now(); try { localStorage.setItem(SK, JSON.stringify(st)); } catch {} }
@@ -1580,8 +1612,13 @@ async function syncConnect() {
   saveSync();
 }
 
-function syncDisconnect() {
-  if (!confirm('Disconnect cloud sync on this device? The data in your gist is kept.')) return;
+async function syncDisconnect() {
+  const ok = await askConfirm({
+    title: 'Disconnect cloud sync?',
+    body: 'This device stops syncing and forgets the token. Your binders stay on this device, and the copy in your gist is kept.',
+    confirmLabel: 'Disconnect',
+  });
+  if (!ok) return;
   sync = { token: '', gistId: '', base: 0 };
   saveSync();
   setSync('off', 'off');
