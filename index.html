@@ -1196,6 +1196,18 @@ function tcgPrice(d, variant) {
   return null;
 }
 const usd = n => n == null ? '–' : `$${n.toFixed(2)}`;
+/* EUR -> USD for Cardmarket prices: daily rate from frankfurter.dev, cached; an old cached rate beats none */
+const SK_FX = 'pkFx1';
+async function eurUsd() {
+  let c = null;
+  try { c = JSON.parse(localStorage.getItem(SK_FX) || 'null'); } catch {}
+  if (c && Date.now() - c.ts < 24 * 60 * 60 * 1000) return c.rate;
+  try {
+    const r = (await (await fetch('https://api.frankfurter.dev/v1/latest?base=EUR&symbols=USD')).json()).rates?.USD;
+    if (r > 0) { try { localStorage.setItem(SK_FX, JSON.stringify({ ts: Date.now(), rate: r })); } catch {} return r; }
+  } catch {}
+  return c?.rate || null;
+}
 /* TCGdex sometimes has no TCGplayer prices for a card (e.g. promos) but still lists its TCGplayer product id */
 const FIN_TYPES = { reverse_holo: ['reverse', 'reverse-holo'], normal: ['normal'], holo: ['holo'] };
 function tcgProductId(d, variant) {
@@ -1213,12 +1225,15 @@ async function showPrice(c, idx) {
   try { d = await cardDetail(c.tcgId); } catch {}
   if (detIdx !== idx) return;   // moved on to another card
   const p = tcgPrice(d, c.variant);
+  const cm = !p ? d?.pricing?.cardmarket : null;
+  const fx = cm?.trend != null ? await eurUsd() : null;
+  if (detIdx !== idx) return;
   el.innerHTML = p
     ? `<b>${usd(p.marketPrice)}</b> market · low ${usd(p.lowPrice)}<br><a href="https://www.tcgplayer.com/product/${p.productId}" target="_blank" rel="noopener" title="TCGplayer price as of ${esc(String(p.updated || '').slice(0, 10))} (${esc(p.key)})">Buy on TCGplayer ↗</a>`
     : (() => {
-      const cm = d?.pricing?.cardmarket, pid = tcgProductId(d, c.variant);
-      const eur = n => `€${n.toFixed(2)}`;
-      return `No TCGplayer price listed${cm?.trend != null ? `<br>Cardmarket trend <b>${eur(cm.trend)}</b>${cm.low != null ? ` · low ${eur(cm.low)}` : ''}` : ''}<br>`
+      const pid = tcgProductId(d, c.variant);
+      const cmLine = fx ? `<br>≈ <b>${usd(cm.trend * fx)}</b> Cardmarket trend${cm.low != null ? ` · low ${usd(cm.low * fx)}` : ''}, converted to USD` : '';
+      return `No TCGplayer price listed${cmLine}<br>`
         + (pid ? `<a href="https://www.tcgplayer.com/product/${pid}" target="_blank" rel="noopener">View on TCGplayer ↗</a>`
                : `<a href="${search}" target="_blank" rel="noopener">Search TCGplayer ↗</a>`);
     })();
@@ -2066,7 +2081,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.14';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.15';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
