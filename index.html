@@ -188,6 +188,19 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 /* ── Detail modal ────────────────────────────────────────── */
 .m-det{max-width:420px}
 @media (max-width:640px){.m-det{padding:16px}.m-det .mfoot{margin-top:12px}.overlay{padding:10px}}
+.fbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.fsearch{position:relative;flex:1;min-width:200px}
+.fsearch input{width:100%;background:var(--surf);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 34px 9px 12px;font-size:.88rem;outline:none}
+.fsearch input:focus{border-color:var(--red)}
+.fclear{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:24px;height:24px;border-radius:50%;border:none;background:var(--surf2);color:var(--text);font-size:1rem;line-height:1;cursor:pointer}
+.fseg{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.fseg button{background:transparent;border:none;color:var(--muted);padding:9px 14px;font-size:.82rem;font-weight:600;cursor:pointer;border-right:1px solid var(--border)}
+.fseg button:last-child{border-right:none}
+.fseg button:hover{background:rgba(255,255,255,.05);color:var(--text)}
+.fseg button.on{background:var(--surf2);color:var(--text)}
+.fseg i{font-style:normal;font-weight:500;opacity:.7;margin-left:2px}
+.pos{position:absolute;top:4px;left:4px;z-index:3;font-size:.55rem;font-weight:700;padding:2px 5px;border-radius:4px;background:rgba(15,23,42,.88);color:#cbd5e1;pointer-events:none}
+.nomatch{grid-column:1/-1;text-align:center;color:var(--muted);padding:60px 10px;font-size:.9rem}
 .detimgw{position:relative;width:min(100%,340px,max(140px,calc((100vh - 330px)*.714)));width:min(100%,340px,max(140px,calc((100dvh - 330px)*.714)));aspect-ratio:2.5/3.5;border-radius:10px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,.55);margin:0 auto 16px}
 .detnav{display:flex;align-items:center;justify-content:center;gap:8px;margin:-4px 0 12px}
 .detimg{width:100%;height:100%;object-fit:cover;display:block}
@@ -329,6 +342,17 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
         <button class="nav-btn" id="prev-btn" onclick="goPage(-1)" disabled aria-label="Previous page">‹</button>
         <span class="pg-label" id="pg-label">Page 1 of 1</span>
         <button class="nav-btn" id="next-btn" onclick="goPage(1)" disabled aria-label="Next page">›</button>
+      </div>
+    </div>
+    <div class="fbar">
+      <div class="fsearch">
+        <input id="f-q" type="text" name="find-card" placeholder="Find a card: name, number, set, rarity…" oninput="onFind()" onkeydown="if(event.key==='Escape'){clearFind();this.blur()}" autocomplete="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true">
+        <button class="fclear hidden" id="f-clear" onclick="clearFind()" aria-label="Clear search">×</button>
+      </div>
+      <div class="fseg" id="f-seg">
+        <button class="on" data-f="all" onclick="setFF('all')">All</button>
+        <button data-f="owned" onclick="setFF('owned')">Owned <i id="fc-owned"></i></button>
+        <button data-f="need" onclick="setFF('need')">Need <i id="fc-need"></i></button>
       </div>
     </div>
     <div class="cg" id="cg"></div>
@@ -604,6 +628,44 @@ function save() {
 const ab  = () => st.binders.find(b => b.id === st.activeId) || null;
 const spp = b  => b.rows * b.cols;
 
+/* ── Find & filter ───────────────────────────────────────────
+   While a search or Owned/Need filter is active the grid shows only the matching cards (each tagged with its
+   page and slot), in binder order. The page you were on is restored when the filter is cleared. */
+let fq = '', ff = 'all', pgSaved = 0, fBinderId = null, findT = null;
+const filtering = () => !!fq.trim() || ff !== 'all';
+function matchCard(c) {
+  if (!c) return false;
+  if (ff === 'owned' && c.owned === false) return false;
+  if (ff === 'need'  && c.owned !== false) return false;
+  const q = fq.trim().toLowerCase().replace(/#/g, '');
+  if (!q) return true;
+  const hay = [c.name, c.set, c.rarity, c.variant && c.variant !== 'normal' ? (VL[c.variant] || c.variant) : ''].join(' ').toLowerCase();
+  const num = String(c.number || '').toLowerCase().replace(/^0+(?=\d)/, '');
+  return q.split(/\s+/).every(w => /^\d+$/.test(w) ? num === w.replace(/^0+(?=\d)/, '') : hay.includes(w) || num === w);
+}
+/* slot indices in the current view, in binder order */
+const viewList = b => b.slots.reduce((a, c, i) => (c && (!filtering() || matchCard(c)) && a.push(i), a), []);
+const pagesNow = b => filtering() ? Math.max(1, Math.ceil(viewList(b).length / spp(b))) : totalPg(b);
+
+function applyFind(was) {
+  const now = filtering();
+  if (!was && now) { pgSaved = pg; pg = 0; }
+  else if (was && !now) pg = pgSaved;
+  else pg = 0;
+  renderBinder();
+  renderStats();
+}
+function onFind() {
+  clearTimeout(findT);
+  findT = setTimeout(() => { const was = filtering(); fq = document.getElementById('f-q').value; applyFind(was); }, 120);
+}
+function setFF(f) { const was = filtering(); ff = f; applyFind(was); }
+function clearFind() {
+  const was = filtering();
+  document.getElementById('f-q').value = ''; fq = ''; ff = 'all';
+  applyFind(was);
+}
+
 function totalPg(b) {
   let last = -1;
   for (let i = 0; i < b.slots.length; i++) if (b.slots[i]) last = i;
@@ -737,6 +799,8 @@ function renderStats() {
   if (need) bits.push(`${need} to get`);
   bits.push(`${filled} of ${slots} slots filled`);
   document.getElementById('pg-stats').textContent = b ? bits.join(' · ') : '';
+  document.getElementById('fc-owned').textContent = b ? filled - need : '';
+  document.getElementById('fc-need').textContent  = b ? need : '';
 }
 
 function renderBinder() {
@@ -753,19 +817,34 @@ function renderBinder() {
   }
   wrap.style.display = 'block'; emp.style.display = 'none';
 
-  const tp = totalPg(b);
+  if (fBinderId !== b.id) {   // a different binder: start with no filter
+    fBinderId = b.id; fq = ''; ff = 'all';
+    document.getElementById('f-q').value = '';
+  }
+  const tp = pagesNow(b);
   if (pg >= tp) pg = tp - 1;
   if (pg < 0)   pg = 0;
+  document.getElementById('f-clear').classList.toggle('hidden', !fq);
+  document.querySelectorAll('#f-seg button').forEach(x => x.classList.toggle('on', x.dataset.f === ff));
 
   prev.disabled = pg === 0;
   next.disabled = pg >= tp - 1;
-  document.getElementById('pg-label').textContent = `Page ${pg+1} of ${tp}`;
+  const list = viewList(b);
+  document.getElementById('pg-label').textContent = filtering()
+    ? `${list.length} match${list.length === 1 ? '' : 'es'} · ${pg+1}/${tp}`
+    : `Page ${pg+1} of ${tp}`;
   document.getElementById('pg-bname').textContent = b.name;
 
   // Card grid
   const cg   = document.getElementById('cg');
   cg.style.gridTemplateColumns = `repeat(${b.cols},1fr)`;
   const per  = spp(b), start = pg * per;
+  if (filtering()) {
+    cg.innerHTML = list.length
+      ? list.slice(start, start + per).map(idx => renderFilled(b.slots[idx], idx, `p${Math.floor(idx / per) + 1} · ${idx % per + 1}`)).join('')
+      : `<div class="nomatch">No cards match${fq.trim() ? ` “${esc(fq.trim())}”` : ''}${ff !== 'all' ? ` in ${ff === 'need' ? 'Need' : 'Owned'}` : ''}.</div>`;
+    return;
+  }
   cg.innerHTML = Array.from({length: per}, (_, i) => {
     const idx  = start + i;
     const card = b.slots[idx] || null;
@@ -773,7 +852,7 @@ function renderBinder() {
   }).join('');
 }
 
-function renderFilled(c, idx) {
+function renderFilled(c, idx, pos) {
   const need  = c.owned === false;   // planned card: in the binder layout but not collected yet
   const vc    = !need && c.variant && c.variant !== 'normal' ? ` v-${c.variant}` : '';
   const badge = need ? '<span class="nbadge">Need</span>'
@@ -782,13 +861,13 @@ function renderFilled(c, idx) {
   const imgHtml = c.imageSmall
     ? `<img src="${esc(c.imageSmall)}" alt="${esc(c.name)}" loading="lazy">`
     : `<div class="ph"><div class="ph-n">${esc(c.name)}</div><div class="ph-s">${esc(c.set||'')}</div></div>`;
-  return `<div class="slot slot-filled${vc}${need ? ' slot-need' : ''}" onclick="openDetail(${idx})">${imgHtml}${badge}</div>`;
+  return `<div class="slot slot-filled${vc}${need ? ' slot-need' : ''}" onclick="openDetail(${idx})">${imgHtml}${badge}${pos ? `<span class="pos">${pos}</span>` : ''}</div>`;
 }
 
 /* ── Navigation ───────────────────────────────────────────── */
 function goPage(d) {
   const b = ab(); if (!b) return;
-  pg = Math.max(0, Math.min(totalPg(b) - 1, pg + d));
+  pg = Math.max(0, Math.min(pagesNow(b) - 1, pg + d));
   renderBinder();
 }
 
@@ -923,9 +1002,9 @@ function doAdd() {
 let detIdx = -1;
 function detStep(d) {
   const b = ab(); if (!b) return;
-  for (let i = detIdx + d; i >= 0 && i < b.slots.length; i += d) {
-    if (b.slots[i]) { openDetail(i); return; }
-  }
+  const list = viewList(b);
+  const next = d > 0 ? list.find(i => i > detIdx) : [...list].reverse().find(i => i < detIdx);
+  if (next !== undefined) openDetail(next);
 }
 
 /* TCGplayer price + product link for one printing, from the card's TCGdex pricing record */
@@ -962,13 +1041,13 @@ function openDetail(idx) {
   const c = b.slots[idx];
   if (!c) { openAdd(idx); return; }
   detIdx = idx;
-  const filled = b.slots.reduce((a, x, i) => (x && a.push(i), a), []);
-  const at = filled.indexOf(idx);
-  document.getElementById('det-pos').textContent = `${at + 1} of ${filled.length}`;
-  document.getElementById('det-prev').disabled = at <= 0;
-  document.getElementById('det-next').disabled = at >= filled.length - 1;
-  const dp = Math.floor(idx / spp(b));
-  if (dp !== pg) { pg = dp; renderBinder(); }   // keep the page behind the popup in step
+  const list = viewList(b);
+  const at = list.indexOf(idx);
+  document.getElementById('det-pos').textContent = at < 0 ? 'Not in this filter' : `${at + 1} of ${list.length}`;
+  document.getElementById('det-prev').disabled = !list.some(i => i < idx);
+  document.getElementById('det-next').disabled = !list.some(i => i > idx);
+  const dp = Math.floor((filtering() ? at : idx) / spp(b));
+  if (at >= 0 && dp !== pg) { pg = dp; renderBinder(); }   // keep the page behind the popup in step
   document.getElementById('det-img').src = c.imageLarge || c.imageSmall || '';
   const need = c.owned === false;
   document.getElementById('det-wrap').className =
@@ -1444,6 +1523,11 @@ document.querySelectorAll('.overlay').forEach(el => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !document.getElementById('m-confirm').classList.contains('hidden')) { closeM('m-confirm'); return; }   // only the top dialog
   if (e.key === 'Escape') ['m-confirm','m-add','m-det','m-new','m-set','m-bulk','m-sync','m-val'].forEach(closeM);
+  if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && !document.querySelector('.overlay:not(.hidden)')) {
+    const q = document.getElementById('f-q');
+    if (q && q.offsetParent) { e.preventDefault(); q.focus(); }
+    return;
+  }
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
   const d = e.key === 'ArrowLeft' ? -1 : 1;
@@ -1454,7 +1538,7 @@ document.addEventListener('keydown', e => {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.2';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.3';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
