@@ -817,7 +817,8 @@ const IMG_TCGDEX = {
   'swsh11tg': 'swsh/swsh11',
   'swsh12tg': 'swsh/swsh12',
   'swsh12.5gg': 'swsh/swsh12.5',
-  'mep': 'me/mep'
+  'mep': 'me/mep',
+  'svp': 'sv/svp'
 };
 /* A few promo sets have no art on TCGdex at all; pokemontcg.io still serves those. TCGdex set id -> id there. */
 const IMG_FALLBACK = {
@@ -1936,7 +1937,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.10';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.11';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
