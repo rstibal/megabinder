@@ -51,7 +51,10 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .empty-binder{text-align:center;color:var(--muted);padding:80px 20px;flex:1}
 .empty-binder h2{color:var(--text);margin:12px 0 6px}
 .binder-wrap{flex:1;max-width:920px}
-.pg-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.nav-btn.add{border-style:dashed;color:var(--muted)}.nav-btn.add:hover{border-color:var(--red);color:var(--text)}
+.pg-rm{background:transparent;border:none;color:var(--muted);font-size:.75rem;cursor:pointer;padding:4px 8px;margin-right:4px;text-decoration:underline}
+.pg-rm:hover{color:#fca5a5}
+.pg-bar{flex-wrap:wrap;display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
 .pg-title{font-size:1.05rem;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pager{display:flex;align-items:center;gap:4px;flex-shrink:0}
 .pg-label{font-size:.8rem;color:var(--muted);min-width:84px;text-align:center}
@@ -371,9 +374,10 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     <div class="pg-bar">
       <div class="pg-head"><div class="pg-title" id="pg-bname"></div><div class="pg-sub" id="pg-stats"></div></div>
       <div class="pager">
+        <button class="pg-rm hidden" id="rm-page" onclick="removePage()" title="Remove this empty page">Remove page</button>
         <button class="nav-btn" id="prev-btn" onclick="goPage(-1)" disabled aria-label="Previous page">‹</button>
         <span class="pg-label" id="pg-label">Page 1 of 1</span>
-        <button class="nav-btn" id="next-btn" onclick="goPage(1)" disabled aria-label="Next page">›</button>
+        <button class="nav-btn" id="next-btn" onclick="nextClick()" disabled aria-label="Next page">›</button>
       </div>
     </div>
     <div class="fbar">
@@ -722,13 +726,35 @@ function clearFind() {
   applyFind(was);
 }
 
-function totalPg(b) {
+/* Pages needed for the cards: up to the last filled one, plus a spare page after a full one */
+function autoPg(b) {
   let last = -1;
   for (let i = 0; i < b.slots.length; i++) if (b.slots[i]) last = i;
   if (last < 0) return 1;
   const lp = Math.floor(last / spp(b));
-  const full = b.slots.slice(lp * spp(b), (lp + 1) * spp(b)).every(s => s !== null);
+  const pageSlots = b.slots.slice(lp * spp(b), (lp + 1) * spp(b));
+  const full = pageSlots.length === spp(b) && pageSlots.every(s => s !== null);   // a short slice is not a full page
   return lp + 1 + (full ? 1 : 0);
+}
+/* b.pages holds pages added on purpose (e.g. to start a new page with empty slots left on the last) */
+const totalPg = b => Math.max(autoPg(b), b.pages || 1);
+function nextClick() {
+  const b = ab(); if (!b) return;
+  if (!filtering() && pg >= totalPg(b) - 1) addPage(); else goPage(1);
+}
+function addPage() {
+  const b = ab(); if (!b) return;
+  b.pages = totalPg(b) + 1;
+  pg = b.pages - 1;
+  save(); renderAll();
+}
+function removePage() {
+  const b = ab(); if (!b) return;
+  const tp = totalPg(b);
+  if (tp <= autoPg(b) || pg !== tp - 1) return;   // only an extra page the user added, and only while on it
+  b.pages = tp - 1;
+  pg = tp - 2;
+  save(); renderAll();
 }
 
 function nextEmpty(b) {
@@ -884,7 +910,13 @@ function renderBinder() {
   document.querySelectorAll('#f-seg button').forEach(x => x.classList.toggle('on', x.dataset.f === ff));
 
   prev.disabled = pg === 0;
-  next.disabled = pg >= tp - 1;
+  const atEnd = !filtering() && pg >= tp - 1;   // on the last page: the arrow becomes "add a page"
+  next.disabled = filtering() && pg >= tp - 1;
+  next.textContent = atEnd ? '+' : '›';
+  next.title = atEnd ? 'Add a page' : 'Next page';
+  next.setAttribute('aria-label', next.title);
+  next.classList.toggle('add', atEnd);
+  document.getElementById('rm-page').classList.toggle('hidden', !(atEnd && tp > autoPg(b)));
   const list = viewList(b);
   document.getElementById('pg-label').textContent = filtering()
     ? `${list.length} match${list.length === 1 ? '' : 'es'} · ${pg+1}/${tp}`
@@ -1767,7 +1799,7 @@ showInstall();
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.6';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.7';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
