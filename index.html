@@ -1167,9 +1167,17 @@ async function doDelBinder() {
 }
 
 /* ── Bulk add ─────────────────────────────────────────────── */
-function openBulk() {
+async function openBulk() {
   const b = ab();
-  if (!b) { alert('Create a binder first.'); return; }
+  if (!b) {
+    const go = await askConfirm({
+      title: 'Create a binder first',
+      body: 'Cards are added to a binder, and there are none yet.',
+      confirmLabel: 'Create a binder',
+    });
+    if (go) openNewBinder();
+    return;
+  }
   bulkCards = []; bulkNeed.clear(); bulkVisible = []; bulkRarOn.clear(); bulkRevOn.clear();
   bulkSetMatches = [];
   document.getElementById('bulk-set-in').value = '';
