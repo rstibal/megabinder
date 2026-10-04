@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MegaBinder</title>
+<meta name="theme-color" content="#0f172a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="MegaBinder">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <!-- Requires internet access — uses the TCGdex API for card art & set data -->
 <style>
 /* ── Tokens ──────────────────────────────────────────────── */
@@ -83,6 +91,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
   .binder-ctrl .b-add:hover{background:#dc2626;border-color:#dc2626}
   .binder-ctrl .sect:first-child{order:0}
   .blist{order:1}.sect2{order:3}.b-add{order:4}.b-val{order:5}.b-shop{order:6}.b-set{order:7}
+  .b-install{order:8}
   #sync-btn{order:9;margin-top:auto}
   .lbl{display:inline}
   .sync-st{font-size:.7rem;opacity:.85;font-weight:500}
@@ -333,6 +342,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     <button class="btn btn-ghost b-val" onclick="openValue()" title="Add up TCGplayer prices for this binder"><span class="ico">$</span><span class="lbl">Binder value</span></button>
     <button class="btn btn-ghost b-shop" onclick="openShop()" title="Cards you still need, with prices and buy links"><span class="ico">🛒</span><span class="lbl">Shopping list</span></button>
     <button class="btn btn-ghost b-set" onclick="openSettings()" title="Binder settings"><span class="ico">⚙️</span><span class="lbl">Binder settings</span></button>
+    <button class="btn btn-ghost b-install hidden" id="install-btn" onclick="installApp()" title="Add MegaBinder to your home screen or desktop"><span class="ico">⤓</span><span class="lbl">Install app</span></button>
     <button class="btn btn-ghost" id="sync-btn" data-state="off" onclick="openSync()" title="Cloud sync (off)"><span class="ico">☁</span><span class="lbl sync-lbl">Cloud sync</span><span class="lbl sync-st" id="sync-st"></span></button>
     <button class="btn btn-red b-new" onclick="openNewBinder()">+ New Binder</button>
   </div>
@@ -1644,10 +1654,31 @@ document.addEventListener('keydown', e => {
   else if (!document.querySelector('.overlay:not(.hidden)')) goPage(d);
 });
 
+/* ── Install as an app (PWA) ──────────────────────────────── */
+if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+let installEv = null;
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function showInstall() {
+  document.getElementById('install-btn').classList.toggle('hidden', isStandalone() || !(installEv || isIOS));
+}
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEv = e; showInstall(); });
+addEventListener('appinstalled', () => { installEv = null; showInstall(); });
+async function installApp() {
+  if (installEv) {
+    installEv.prompt();
+    await installEv.userChoice;
+    installEv = null; showInstall();
+  } else {
+    askConfirm({ title: 'Add to your home screen', body: 'In Safari, tap the <b>Share</b> button, then choose <b>Add to Home Screen</b>.', confirmLabel: 'Got it' });
+  }
+}
+showInstall();
+
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.4';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.5';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
