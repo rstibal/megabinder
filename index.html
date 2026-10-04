@@ -82,7 +82,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
   .binder-ctrl .b-add{background:var(--red);border-color:var(--red);color:#fff;justify-content:center}
   .binder-ctrl .b-add:hover{background:#dc2626;border-color:#dc2626}
   .binder-ctrl .sect:first-child{order:0}
-  .blist{order:1}.sect2{order:3}.b-add{order:4}.b-val{order:5}.b-set{order:6}
+  .blist{order:1}.sect2{order:3}.b-add{order:4}.b-val{order:5}.b-shop{order:6}.b-set{order:7}
   #sync-btn{order:9;margin-top:auto}
   .lbl{display:inline}
   .sync-st{font-size:.7rem;opacity:.85;font-weight:500}
@@ -221,6 +221,19 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .cfm-opt{display:block;font-size:.8rem;color:var(--muted);text-align:left;margin-bottom:6px}
 .cfm-opt b{color:var(--text)}
 #cfm-ok:disabled{opacity:.35;cursor:not-allowed}
+.m-shop{max-width:560px}
+.shop-tools{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 0}
+.shop-tools label{font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:8px}
+.shop-tools select{background:var(--surf2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:.82rem}
+.shop-tools .btn{padding:7px 12px}
+.shop-list{max-height:50vh;overflow-y:auto;margin:0 -4px;padding:0 4px}
+.shop-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.07)}
+.shop-main{min-width:0;font-size:.88rem}
+.shop-main span{display:block;font-size:.74rem;color:var(--muted);margin-top:2px}
+.shop-price{text-align:right;flex-shrink:0;font-size:.85rem;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.shop-price span{color:var(--muted);font-size:.74rem}
+.shop-price a{color:#93c5fd;font-weight:600;font-size:.78rem;text-decoration:none}
+.shop-price a:hover{text-decoration:underline}
 .vtot{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:.9rem;margin-bottom:14px}
 .vtot span{color:var(--muted)}.vtot b{text-align:right}
 .vtot .vsum{border-top:1px solid var(--border);padding-top:8px;color:var(--text);font-weight:700}
@@ -318,6 +331,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     <div class="sect sect2"><span>This binder</span></div>
     <button class="btn btn-ghost b-add" onclick="openBulk()">+ Add by Set</button>
     <button class="btn btn-ghost b-val" onclick="openValue()" title="Add up TCGplayer prices for this binder"><span class="ico">$</span><span class="lbl">Binder value</span></button>
+    <button class="btn btn-ghost b-shop" onclick="openShop()" title="Cards you still need, with prices and buy links"><span class="ico">🛒</span><span class="lbl">Shopping list</span></button>
     <button class="btn btn-ghost b-set" onclick="openSettings()" title="Binder settings"><span class="ico">⚙️</span><span class="lbl">Binder settings</span></button>
     <button class="btn btn-ghost" id="sync-btn" data-state="off" onclick="openSync()" title="Cloud sync (off)"><span class="ico">☁</span><span class="lbl sync-lbl">Cloud sync</span><span class="lbl sync-st" id="sync-st"></span></button>
     <button class="btn btn-red b-new" onclick="openNewBinder()">+ New Binder</button>
@@ -440,6 +454,27 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 
 
 <!-- ═══════════════════════ SETTINGS MODAL ══════════════════ -->
+<div class="overlay hidden" id="m-shop">
+  <div class="modal m-shop">
+    <h2>Shopping list</h2>
+    <p class="vnote" id="shop-sum"></p>
+    <div class="shop-tools">
+      <label>Sort
+        <select id="shop-sort" onchange="renderShop()">
+          <option value="price">Price, high to low</option>
+          <option value="order">Binder order</option>
+          <option value="name">Name</option>
+        </select>
+      </label>
+      <button class="btn btn-ghost" id="shop-copy" onclick="copyShop()">Copy list</button>
+    </div>
+    <div class="shop-list" id="shop-list"></div>
+    <div class="mfoot">
+      <button class="btn btn-ghost" onclick="closeM('m-shop')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay hidden" id="m-val">
   <div class="modal m-set">
     <h2>Binder value</h2>
@@ -1076,6 +1111,35 @@ function openDetail(idx) {
 /* ── Binder value ─────────────────────────────────────────────
    Prices are only looked up when the button is pressed, a few at a time, so a large binder
    doesn't hammer the API. Results come from the same per-card cache the popup uses. */
+/* Look up card records (with TCGplayer pricing) four at a time. alive() lets a closed dialog stop the work;
+   onTick(done) reports progress. Results also land in cardDetailCache, so repeat runs are instant. */
+async function fetchDetails(ids, alive, onTick) {
+  const got = new Map();
+  let done = 0;
+  const queue = [...ids];
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (queue.length && alive()) {
+      const id = queue.shift();
+      try { got.set(id, await cardDetail(id)); } catch { got.set(id, null); }
+      done++;
+      if (alive()) onTick(done);
+    }
+  }));
+  return got;
+}
+/* A big lookup is slow: say so first. Resolves true to go ahead. */
+async function confirmBigLookup(ids) {
+  const todo = ids.filter(id => !cardDetailCache.has(id)).length;
+  if (todo <= 100) return true;
+  return askConfirm({
+    title: 'This may take a while',
+    body: `Pricing <b>${todo.toLocaleString()} cards</b> means one lookup per card, so a list this size can take <b>several minutes</b>.<span class="cfm-warn">Keep this tab open until it finishes. If you close the window, prices already found are kept, and pressing the button again carries on from there.</span>`,
+    confirmLabel: 'Start pricing',
+  });
+}
+const progressHtml = (n, total) => `<p class="vnote">Looking up TCGplayer prices for ${total} card${total > 1 ? 's' : ''}…</p>
+  <div class="vbar"><i style="width:${Math.round(n / total * 100)}%"></i></div><p class="vnote">${n} of ${total}</p>`;
+
 let valRun = 0;
 async function openValue() {
   const b = ab(); if (!b) return;
@@ -1083,34 +1147,11 @@ async function openValue() {
   const body = document.getElementById('val-body');
   const cards = b.slots.filter(c => c && c.tcgId);
   const ids = [...new Set(cards.map(c => c.tcgId))];
-  const todo = ids.filter(id => !cardDetailCache.has(id)).length;
-  if (todo > 100) {   // a big lookup: say so before starting
-    const go = await askConfirm({
-      title: 'This may take a while',
-      body: `Pricing <b>${todo.toLocaleString()} cards</b> means one lookup per card, so a binder this size can take <b>several minutes</b>.<span class="cfm-warn">Keep this tab open until it finishes. If you close the window, prices already found are kept, and pressing the button again carries on from there.</span>`,
-      confirmLabel: 'Start pricing',
-    });
-    if (!go || run !== valRun) return;
-  }
+  if (!(await confirmBigLookup(ids)) || run !== valRun) return;
   openM('m-val');
   if (!cards.length) { body.innerHTML = '<p class="vnote">No cards in this binder yet.</p>'; return; }
-
-  const got = new Map();
-  let done = 0;
-  const progress = () => {
-    body.innerHTML = `<p class="vnote">Looking up TCGplayer prices for ${ids.length} card${ids.length > 1 ? 's' : ''}…</p>
-      <div class="vbar"><i style="width:${Math.round(done / ids.length * 100)}%"></i></div><p class="vnote">${done} of ${ids.length}</p>`;
-  };
-  progress();
-  const queue = [...ids];
-  await Promise.all(Array.from({ length: 4 }, async () => {
-    while (queue.length && run === valRun) {
-      const id = queue.shift();
-      try { got.set(id, await cardDetail(id)); } catch { got.set(id, null); }
-      done++;
-      if (run === valRun) progress();
-    }
-  }));
+  body.innerHTML = progressHtml(0, ids.length);
+  const got = await fetchDetails(ids, () => run === valRun, n => { body.innerHTML = progressHtml(n, ids.length); });
   if (run !== valRun) return;   // closed or restarted
 
   let own = 0, need = 0, nOwn = 0, nNeed = 0, none = 0, newest = '';
@@ -1136,6 +1177,73 @@ async function openValue() {
     </div>
     ${top ? `<div class="vtop"><h4>Most valuable</h4>${top}</div>` : ''}
     <p class="vnote">TCGplayer market prices${newest ? `, updated ${esc(newest.slice(0, 10))}` : ''}.${none ? ` ${none} card${none === 1 ? ' has' : 's have'} no price and ${none === 1 ? 'is' : 'are'} not counted.` : ''}</p>`;
+}
+
+/* ── Shopping list: the cards marked Need, with TCGplayer prices and buy links ── */
+let shopRun = 0, shopRows = [], shopReady = false;
+const tcgSearch = c => `https://www.tcgplayer.com/search/pokemon/product?q=${encodeURIComponent(`${c.name} ${c.number || ''}`.trim())}`;
+
+async function openShop() {
+  const b = ab(); if (!b) return;
+  const run = ++shopRun;
+  const need = b.slots.filter(c => c && c.owned === false);
+  // the same card + finish twice becomes one row with a quantity
+  const byKey = new Map();
+  for (const c of need) {
+    const k = `${c.tcgId || c.name + c.number}|${c.variant}`;
+    if (byKey.has(k)) byKey.get(k).qty++;
+    else byKey.set(k, { c, qty: 1, order: byKey.size, price: null, pid: null });
+  }
+  shopRows = [...byKey.values()];
+  shopReady = false;
+  const ids = [...new Set(shopRows.map(r => r.c.tcgId).filter(Boolean))];
+  if (!(await confirmBigLookup(ids)) || run !== shopRun) return;
+  openM('m-shop');
+  renderShop(`Looking up prices… 0 of ${ids.length}`);
+  if (!shopRows.length) return;
+  const got = await fetchDetails(ids, () => run === shopRun, n => renderShop(`Looking up prices… ${n} of ${ids.length}`));
+  if (run !== shopRun) return;
+  for (const r of shopRows) {
+    const p = r.c.tcgId ? tcgPrice(got.get(r.c.tcgId), r.c.variant) : null;
+    r.price = p?.marketPrice ?? null;
+    r.pid = p?.productId ?? null;
+  }
+  shopReady = true;
+  renderShop();
+}
+
+function renderShop(loading) {
+  const list = document.getElementById('shop-list'), sum = document.getElementById('shop-sum');
+  const total = shopRows.reduce((n, r) => n + r.qty, 0);
+  if (!shopRows.length) {
+    sum.textContent = '';
+    list.innerHTML = '<p class="vnote">Nothing to get in this binder. Cards you mark as <b>Need</b>, or a set you add with <b>All Needed</b>, will show up here.</p>';
+    return;
+  }
+  const sort = document.getElementById('shop-sort').value;
+  const rows = [...shopRows].sort(sort === 'price' && shopReady ? (a, z) => (z.price ?? -1) - (a.price ?? -1)
+    : sort === 'name' ? (a, z) => a.c.name.localeCompare(z.c.name) || a.order - z.order
+    : (a, z) => a.order - z.order);
+  const est = shopRows.reduce((n, r) => n + (r.price || 0) * r.qty, 0);
+  const unpriced = shopRows.filter(r => r.price == null).reduce((n, r) => n + r.qty, 0);
+  sum.innerHTML = loading ? esc(loading)
+    : `<b>${total.toLocaleString()}</b> card${total === 1 ? '' : 's'} to get · about <b>${usd(est)}</b> at TCGplayer market${unpriced ? ` (${unpriced} without a price)` : ''}`;
+  list.innerHTML = rows.map(r => {
+    const c = r.c;
+    const link = r.pid ? `https://www.tcgplayer.com/product/${r.pid}` : tcgSearch(c);
+    const fin = c.variant && c.variant !== 'normal' ? ` · ${esc(VL[c.variant] || c.variant)}` : '';
+    const price = !shopReady ? '…' : r.price != null ? `<b>${usd(r.price)}</b>${r.qty > 1 ? ` <span>× ${r.qty}</span>` : ''}` : '<span>no price</span>';
+    return `<div class="shop-row"><div class="shop-main"><b>${esc(c.name)}</b>${r.qty > 1 && r.price == null ? ` × ${r.qty}` : ''}<span>${c.number ? '#' + esc(c.number) + ' · ' : ''}${esc(c.set || '')}${fin}</span></div>
+      <div class="shop-price">${price}<a href="${link}" target="_blank" rel="noopener">${r.pid ? 'Buy' : 'Search'} ↗</a></div></div>`;
+  }).join('');
+}
+
+async function copyShop() {
+  const text = shopRows.map(r => `${r.qty} ${r.c.name} (${[r.c.set, r.c.number ? '#' + r.c.number : '', r.c.variant && r.c.variant !== 'normal' ? VL[r.c.variant] || r.c.variant : ''].filter(Boolean).join(', ')})`).join('\n');
+  const btn = document.getElementById('shop-copy');
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied ✓'; }
+  catch { btn.textContent = 'Copy failed'; }
+  setTimeout(() => { btn.textContent = 'Copy list'; }, 1800);
 }
 
 /* ── New binder ───────────────────────────────────────────── */
@@ -1509,6 +1617,7 @@ function doBulkAdd() {
 /* ── Modal helpers ────────────────────────────────────────── */
 function openM(id) { document.getElementById(id).classList.remove('hidden'); }
 function closeM(id) {
+  if (id === 'm-shop') shopRun++;   // stop any price lookup in progress
   if (id === 'm-confirm' && confirmRes) { const r = confirmRes; confirmRes = null; r(false); }
   if (id === 'm-val') valRun++;   // stop any price lookup in progress
   document.getElementById(id).classList.add('hidden');
@@ -1522,7 +1631,7 @@ document.querySelectorAll('.overlay').forEach(el => {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !document.getElementById('m-confirm').classList.contains('hidden')) { closeM('m-confirm'); return; }   // only the top dialog
-  if (e.key === 'Escape') ['m-confirm','m-add','m-det','m-new','m-set','m-bulk','m-sync','m-val'].forEach(closeM);
+  if (e.key === 'Escape') ['m-confirm','m-add','m-det','m-new','m-set','m-bulk','m-sync','m-val','m-shop'].forEach(closeM);
   if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && !document.querySelector('.overlay:not(.hidden)')) {
     const q = document.getElementById('f-q');
     if (q && q.offsetParent) { e.preventDefault(); q.focus(); }
@@ -1538,7 +1647,7 @@ document.addEventListener('keydown', e => {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.3';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.4';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
