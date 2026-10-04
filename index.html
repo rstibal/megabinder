@@ -190,6 +190,10 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .detimg{width:100%;height:100%;object-fit:cover;display:block}
 .detimgw.need .detimg{filter:grayscale(1) brightness(.8);opacity:.5}
 .detinfo{text-align:center;margin-bottom:4px}.detinfo h3{font-size:1.05rem}.detinfo p{font-size:.78rem;color:var(--muted);margin-top:4px}
+.detprice{text-align:center;font-size:.8rem;color:var(--muted);margin:2px 0 10px;min-height:38px;line-height:1.5}
+.detprice b{color:var(--text);font-size:1rem}
+.detprice a{display:inline-block;margin-top:4px;color:#93c5fd;font-weight:600;text-decoration:none}
+.detprice a:hover{text-decoration:underline}
 .detvar{text-align:center;font-size:.8rem;font-weight:600;margin-top:6px;color:#f59e0b;min-height:20px}
 
 /* ── New Binder modal ────────────────────────────────────── */
@@ -350,6 +354,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
       <p id="det-meta"></p>
     </div>
     <div class="detvar" id="det-var"></div>
+    <div class="detprice" id="det-price"></div>
     <div class="mfoot">
       <button class="btn btn-ghost" onclick="closeM('m-det')">Close</button>
       <button class="btn btn-ghost" id="det-own"></button>
@@ -873,6 +878,35 @@ function detStep(d) {
   }
 }
 
+/* TCGplayer price + product link for one printing, from the card's TCGdex pricing record */
+const PRICE_KEYS = {
+  reverse_holo: ['reverse-holofoil', 'holofoil', 'normal'],
+  normal:       ['normal', 'holofoil', 'reverse-holofoil'],
+};
+function tcgPrice(d, variant) {
+  const t = d?.pricing?.tcgplayer;
+  if (!t) return null;
+  for (const k of PRICE_KEYS[variant] || ['holofoil', 'normal', 'reverse-holofoil']) {
+    if (t[k]?.productId) return { key: k, ...t[k], updated: t.updated };
+  }
+  return null;
+}
+const usd = n => n == null ? '–' : `$${n.toFixed(2)}`;
+
+async function showPrice(c, idx) {
+  const el = document.getElementById('det-price');
+  const search = `https://www.tcgplayer.com/search/pokemon/product?q=${encodeURIComponent(`${c.name} ${c.number || ''}`.trim())}`;
+  el.textContent = c.tcgId ? 'Loading price…' : '';
+  if (!c.tcgId) return;
+  let d = null;
+  try { d = await cardDetail(c.tcgId); } catch {}
+  if (detIdx !== idx) return;   // moved on to another card
+  const p = tcgPrice(d, c.variant);
+  el.innerHTML = p
+    ? `<b>${usd(p.marketPrice)}</b> market · low ${usd(p.lowPrice)}<br><a href="https://www.tcgplayer.com/product/${p.productId}" target="_blank" rel="noopener" title="TCGplayer price as of ${esc(String(p.updated || '').slice(0, 10))} (${esc(p.key)})">Buy on TCGplayer ↗</a>`
+    : `No TCGplayer price listed<br><a href="${search}" target="_blank" rel="noopener">Search TCGplayer ↗</a>`;
+}
+
 function openDetail(idx) {
   const b = ab(); if (!b) return;
   const c = b.slots[idx];
@@ -894,6 +928,7 @@ function openDetail(idx) {
     [c.set, c.number ? `#${c.number}` : '', c.rarity].filter(Boolean).join(' · ');
   document.getElementById('det-var').textContent =
     c.variant && c.variant !== 'normal' ? `✦ ${VL[c.variant] || c.variant}` : '';
+  showPrice(c, idx);
   const own = document.getElementById('det-own');
   own.textContent = c.owned === false ? '✓ Mark as Owned' : 'Mark as Needed';
   own.onclick = () => {
