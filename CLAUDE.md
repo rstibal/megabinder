@@ -12,6 +12,7 @@ A single-file web app (`index.html`, vanilla HTML/CSS/JS, no build step) for tra
 - Bump `APP_VERSION` in `index.html` (format `YYYY.MM.DD.N`) with every change you push. It shows in the ☁ dialog so the user can tell whether a device is running a stale cached page.
 - **Do not rename `GIST_FILE` / `GIST_DESC`** (`pokemon-binder...`): sync finds the existing gist by those names, so changing them would orphan users' cloud data. Do not rename `localStorage` keys without a migration.
 - The app is an installable PWA: `manifest.webmanifest`, `sw.js` and the `icon-*.png` files sit beside `index.html`. Keep the service worker network-first for the app (a cache-first worker would bring back the stale-page problem) and add any new top-level asset to its `SHELL` list. If you test with a local server, unregister the service worker and clear the caches afterwards.
+- Card art: when TCGdex omits `image` for a set, check whether the picture exists under the base set's folder before reaching for another host (see `IMG_TCGDEX`; Trainer/Galarian Gallery sets such as `swsh12tg` live in `swsh12/`). `IMG_FALLBACK` (pokemontcg.io) is only for the few promo sets TCGdex has nowhere.
 - Never ask for, enter or print a user's GitHub token.
 - Finish (Normal / Holo / Full Art / Gold / Rainbow / Rev. Holo) is automatic from rarity and TCGdex variants. There is no manual finish picker, so don't add one.
 - Keep visual effects subtle and non-animated; the user finds motion distracting (reverse holos are a static stripe pattern plus a light frame).

@@ -791,9 +791,22 @@ async function apiJson(url) {
 }
 
 /* Normalise a TCGdex list item to the shape the UI uses */
-/* TCGdex has no picture for some sets (the Trainer / Galarian Galleries, Shiny Vault, Shining Legends, Dragon Majesty,
-   some promos...). For those we fall back to the pokemontcg.io image host, which still serves them. Map: TCGdex set id -> its id there.
-   Sets not listed (McDonald's, trainer kits, SV Energy, newer promos...) simply show the name placeholder. */
+/* Some sets are listed by TCGdex without a picture, although the picture exists under the BASE set's folder:
+   the Trainer / Galarian Galleries (swsh12tg -> swsh12), Shiny Vault, Shining Legends, Dragon Majesty...
+   Map: TCGdex set id -> "series/folder" that holds the card art (checked against assets.tcgdex.net). */
+const IMG_TCGDEX = {
+  'ex5.5': 'ex/ex5',
+  'sm3.5': 'sm/sm3',
+  'sm7.5': 'sm/sm7',
+  'swsh4.5sv': 'swsh/swsh4.5',
+  'swsh9tg': 'swsh/swsh9',
+  'swsh10tg': 'swsh/swsh10',
+  'swsh11tg': 'swsh/swsh11',
+  'swsh12tg': 'swsh/swsh12',
+  'swsh12.5gg': 'swsh/swsh12.5',
+  'mep': 'me/mep'
+};
+/* A few promo sets have no art on TCGdex at all; pokemontcg.io still serves those. TCGdex set id -> id there. */
 const IMG_FALLBACK = {
   'pop6': 'pop6',
   'pl2': 'pl2',
@@ -802,24 +815,26 @@ const IMG_FALLBACK = {
   'xy8': 'xy8',
   'smp': 'smp',
   'sm2': 'sm2',
-  'sm3.5': 'sm35',
   'sm6': 'sm6',
-  'sm7.5': 'sm75',
   'swshp': 'swshp',
-  'swsh4.5sv': 'swsh45sv',
-  'cel25': 'cel25',
-  'swsh9tg': 'swsh9tg',
-  'swsh10tg': 'swsh10tg',
-  'swsh11tg': 'swsh11tg',
-  'swsh12tg': 'swsh12tg',
-  'swsh12.5gg': 'swsh12pt5gg'
+  'cel25': 'cel25'
 };
 const setOfCard = c => c.setId || (c.tcgId || '').slice(0, (c.tcgId || '').lastIndexOf('-'));
 function fbImages(setId, num) {
-  const h = IMG_FALLBACK[setId];
-  if (!h || !num) return {};
+  if (!num) return {};
   const n = encodeURIComponent(num);
-  return { small: `https://images.pokemontcg.io/${h}/${n}.png`, large: `https://images.pokemontcg.io/${h}/${n}_hires.png` };
+  if (IMG_TCGDEX[setId]) {
+    const base = `https://assets.tcgdex.net/en/${IMG_TCGDEX[setId]}/${n}`;
+    return { small: `${base}/low.webp`, large: `${base}/high.webp` };
+  }
+  const h = IMG_FALLBACK[setId];
+  return h ? { small: `https://images.pokemontcg.io/${h}/${n}.png`, large: `https://images.pokemontcg.io/${h}/${n}_hires.png` } : {};
+}
+/* the picture to show for a saved card: its stored one, unless that came from the fallback host and TCGdex has it */
+function cardImg(c, kind) {
+  const stored = kind === 'large' ? c.imageLarge : c.imageSmall;
+  if (stored && !stored.includes('images.pokemontcg.io')) return stored;
+  return fbImages(setOfCard(c), c.number)[kind] || stored || '';
 }
 /* a picture that fails to load becomes the name placeholder instead of a broken-image icon */
 function imgFail(el) {
@@ -984,7 +999,7 @@ function renderFilled(c, idx, pos) {
   const badge = need ? '<span class="nbadge">Need</span>'
     : c.variant && c.variant !== 'normal'
       ? `<span class="vbadge vb-${c.variant}">${VL[c.variant] || c.variant}</span>` : '';
-  const src = c.imageSmall || fbImages(setOfCard(c), c.number).small;   // cards saved before the fallback existed
+  const src = cardImg(c, 'small');   // also repairs cards saved before the fallback existed
   const imgHtml = src
     ? `<img src="${esc(src)}" alt="${esc(c.name)}" loading="lazy" onerror="imgFail(this)">`
     : `<div class="ph"><div class="ph-n">${esc(c.name)}</div><div class="ph-s">${esc(c.set||'')}</div></div>`;
@@ -1176,11 +1191,10 @@ function openDetail(idx) {
   document.getElementById('det-next').disabled = !list.some(i => i > idx);
   const dp = Math.floor((filtering() ? at : idx) / spp(b));
   if (at >= 0 && dp !== pg) { pg = dp; renderBinder(); }   // keep the page behind the popup in step
-  const fb = fbImages(setOfCard(c), c.number);
-  const small = c.imageSmall || fb.small || '';
+  const small = cardImg(c, 'small');
   const di = document.getElementById('det-img');
   di.onerror = () => { if (small && di.src !== small) di.src = small; };   // no big picture: use the small one
-  di.src = c.imageLarge || fb.large || small;
+  di.src = cardImg(c, 'large') || small;
   const need = c.owned === false;
   document.getElementById('det-wrap').className =
     'detimgw' + (need ? ' need' : c.variant && c.variant !== 'normal' ? ` v-${c.variant}` : '');
@@ -1842,7 +1856,7 @@ showInstall();
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.8';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.9';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
