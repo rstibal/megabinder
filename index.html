@@ -78,7 +78,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
   .binder-ctrl .b-add:hover{background:#dc2626}
   .binder-ctrl>*{order:5}
   .binder-ctrl .sect:first-child{order:0}
-  .blist{order:1!important}.b-new{order:2!important}.sect2{order:3!important}.b-add{order:4!important}
+  .blist{order:1!important}.b-new{order:2!important}.sect2{order:3!important}.b-add{order:4!important}.b-val{order:4!important}
   .hstats .pbar{display:block;margin-top:4px}
   .hstats{margin-top:auto;padding:12px;border:1px solid var(--border);border-radius:10px;background:rgba(255,255,255,.03)}
   #sync-btn,.binder-ctrl .btn[title="Binder settings"]{padding:7px 14px}
@@ -190,6 +190,17 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .detimg{width:100%;height:100%;object-fit:cover;display:block}
 .detimgw.need .detimg{filter:grayscale(1) brightness(.8);opacity:.5}
 .detinfo{text-align:center;margin-bottom:4px}.detinfo h3{font-size:1.05rem}.detinfo p{font-size:.78rem;color:var(--muted);margin-top:4px}
+.vtot{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:.9rem;margin-bottom:14px}
+.vtot span{color:var(--muted)}.vtot b{text-align:right}
+.vtot .vsum{border-top:1px solid var(--border);padding-top:8px;color:var(--text);font-weight:700}
+.vtop{font-size:.8rem;margin-bottom:12px}
+.vtop h4{font-size:.7rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.vrow{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.vrow span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vrow.need span:first-child{color:var(--muted)}
+.vnote{font-size:.72rem;color:var(--muted);line-height:1.5}
+.vbar{height:6px;border-radius:3px;background:var(--surf2);overflow:hidden;margin:10px 0 6px}
+.vbar i{display:block;height:100%;width:0;background:#4ade80;transition:width .2s}
 .detprice{text-align:center;font-size:.8rem;color:var(--muted);margin:2px 0 10px;min-height:38px;line-height:1.5}
 .detprice b{color:var(--text);font-size:1rem}
 .detprice a{display:inline-block;margin-top:4px;color:#93c5fd;font-weight:600;text-decoration:none}
@@ -276,6 +287,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     <button class="btn btn-ghost" style="padding:6px 10px" onclick="openSettings()" title="Binder settings">⚙️<span class="lbl"> Settings</span></button>
     <div class="sect sect2">Tools</div>
     <button class="btn btn-ghost b-add" onclick="openBulk()">+ Add by Set</button>
+    <button class="btn btn-ghost b-val" onclick="openValue()" title="Add up TCGplayer prices for this binder">$<span class="lbl"> Binder value</span></button>
     <button class="btn btn-ghost" id="sync-btn" data-state="off" onclick="openSync()" title="Cloud sync (off)">☁<span class="lbl"> Cloud sync</span></button>
     <button class="btn btn-red b-new" onclick="openNewBinder()">+ New Binder</button>
   </div>
@@ -392,6 +404,16 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 
 
 <!-- ═══════════════════════ SETTINGS MODAL ══════════════════ -->
+<div class="overlay hidden" id="m-val">
+  <div class="modal m-set">
+    <h2>Binder value</h2>
+    <div id="val-body"></div>
+    <div class="mfoot">
+      <button class="btn btn-ghost" onclick="closeM('m-val')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay hidden" id="m-sync">
   <div class="modal m-set">
     <h2>Cloud Sync</h2>
@@ -944,6 +966,62 @@ function openDetail(idx) {
   openM('m-det');
 }
 
+/* ── Binder value ─────────────────────────────────────────────
+   Prices are only looked up when the button is pressed, a few at a time, so a large binder
+   doesn't hammer the API. Results come from the same per-card cache the popup uses. */
+let valRun = 0;
+async function openValue() {
+  const b = ab(); if (!b) return;
+  const run = ++valRun;
+  const body = document.getElementById('val-body');
+  const cards = b.slots.filter(c => c && c.tcgId);
+  const ids = [...new Set(cards.map(c => c.tcgId))];
+  openM('m-val');
+  if (!cards.length) { body.innerHTML = '<p class="vnote">No cards in this binder yet.</p>'; return; }
+
+  const got = new Map();
+  let done = 0;
+  const progress = () => {
+    body.innerHTML = `<p class="vnote">Looking up TCGplayer prices for ${ids.length} card${ids.length > 1 ? 's' : ''}…</p>
+      <div class="vbar"><i style="width:${Math.round(done / ids.length * 100)}%"></i></div><p class="vnote">${done} of ${ids.length}</p>`;
+  };
+  progress();
+  const queue = [...ids];
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (queue.length && run === valRun) {
+      const id = queue.shift();
+      try { got.set(id, await cardDetail(id)); } catch { got.set(id, null); }
+      done++;
+      if (run === valRun) progress();
+    }
+  }));
+  if (run !== valRun) return;   // closed or restarted
+
+  let own = 0, need = 0, nOwn = 0, nNeed = 0, none = 0, newest = '';
+  const priced = [];
+  for (const c of b.slots) {
+    if (!c) continue;
+    const p = c.tcgId ? tcgPrice(got.get(c.tcgId), c.variant) : null;
+    const v = p?.marketPrice;
+    if (v == null) { none++; continue; }
+    const isNeed = c.owned === false;
+    if (isNeed) { need += v; nNeed++; } else { own += v; nOwn++; }
+    priced.push({ c, v, isNeed });
+    if ((p.updated || '') > newest) newest = p.updated;
+  }
+  priced.sort((a, z) => z.v - a.v);
+  const top = priced.slice(0, 5).map(({ c, v, isNeed }) =>
+    `<div class="vrow${isNeed ? ' need' : ''}"><span>${esc(c.name)} ${c.number ? '#' + esc(c.number) : ''}${c.variant && c.variant !== 'normal' ? ' · ' + esc(VL[c.variant] || c.variant) : ''}${isNeed ? ' (need)' : ''}</span><b>${usd(v)}</b></div>`).join('');
+  body.innerHTML = `
+    <div class="vtot">
+      <span>Collected (${nOwn} card${nOwn === 1 ? '' : 's'})</span><b>${usd(own)}</b>
+      ${nNeed ? `<span>Still to get (${nNeed})</span><b>${usd(need)}</b>` : ''}
+      ${nNeed ? `<span class="vsum">Whole binder</span><b class="vsum">${usd(own + need)}</b>` : ''}
+    </div>
+    ${top ? `<div class="vtop"><h4>Most valuable</h4>${top}</div>` : ''}
+    <p class="vnote">TCGplayer market prices${newest ? `, updated ${esc(newest.slice(0, 10))}` : ''}.${none ? ` ${none} card${none === 1 ? ' has' : 's have'} no price and ${none === 1 ? 'is' : 'are'} not counted.` : ''}</p>`;
+}
+
 /* ── New binder ───────────────────────────────────────────── */
 function openNewBinder() {
   newPre = { r:3, c:3 };
@@ -1255,6 +1333,7 @@ function doBulkAdd() {
 /* ── Modal helpers ────────────────────────────────────────── */
 function openM(id) { document.getElementById(id).classList.remove('hidden'); }
 function closeM(id) {
+  if (id === 'm-val') valRun++;   // stop any price lookup in progress
   document.getElementById(id).classList.add('hidden');
   if (id === 'm-add')  document.getElementById('set-drop').classList.add('hidden');
   if (id === 'm-bulk') document.getElementById('bulk-set-drop').classList.add('hidden');
@@ -1265,7 +1344,7 @@ document.querySelectorAll('.overlay').forEach(el => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') ['m-add','m-det','m-new','m-set','m-bulk','m-sync'].forEach(closeM);
+  if (e.key === 'Escape') ['m-add','m-det','m-new','m-set','m-bulk','m-sync','m-val'].forEach(closeM);
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
   const d = e.key === 'ArrowLeft' ? -1 : 1;
