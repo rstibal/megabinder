@@ -116,6 +116,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .syncp{font-size:.82rem;color:var(--muted);line-height:1.5;margin-bottom:10px}
 .syncp a{color:#93c5fd}
 .syncp b{color:var(--text)}
+.vers{margin:14px 0 0;font-size:.72rem;opacity:.75}
 .sync-stat{font-size:.88rem;margin-bottom:12px}
 .sync-stat.err{color:#fca5a5}
 .bcard.need img{filter:grayscale(1) brightness(.8);opacity:.45}
@@ -438,6 +439,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
       <p class="syncp">Changes sync automatically a few seconds after you make them, and when you return to this tab. Every save is kept in the gist's revision history on GitHub.</p>
     </div>
     <div class="sync-stat err hidden" id="sync-err"></div>
+    <p class="syncp vers">MegaBinder version <b id="app-ver"></b></p>
     <div class="mfoot">
       <button class="btn btn-ghost" onclick="closeM('m-sync')">Close</button>
       <button class="btn btn-red" id="sync-connect" onclick="syncConnect()">Connect</button>
@@ -1451,6 +1453,7 @@ document.addEventListener('keydown', e => {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
+const APP_VERSION = '2026.10.04.1';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
@@ -1598,6 +1601,7 @@ function queueSync() {
 }
 
 function openSync() {
+  document.getElementById('app-ver').textContent = APP_VERSION;
   document.getElementById('sync-token').value = '';
   setSync(document.getElementById('sync-btn').dataset.state, document.getElementById('sync-btn').title.replace(/^Cloud sync: /, ''));
   openM('m-sync');

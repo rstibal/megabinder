@@ -9,6 +9,7 @@ A single-file web app (`index.html`, vanilla HTML/CSS/JS, no build step) for tra
 ## Rules for working here
 
 - Keep it one file with no dependencies unless asked.
+- Bump `APP_VERSION` in `index.html` (format `YYYY.MM.DD.N`) with every change you push. It shows in the ☁ dialog so the user can tell whether a device is running a stale cached page.
 - **Do not rename `GIST_FILE` / `GIST_DESC`** (`pokemon-binder...`): sync finds the existing gist by those names, so changing them would orphan users' cloud data. Do not rename `localStorage` keys without a migration.
 - Never ask for, enter or print a user's GitHub token.
 - Finish (Normal / Holo / Full Art / Gold / Rainbow / Rev. Holo) is automatic from rarity and TCGdex variants. There is no manual finish picker, so don't add one.
