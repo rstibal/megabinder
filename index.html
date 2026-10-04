@@ -191,6 +191,15 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .detimg{width:100%;height:100%;object-fit:cover;display:block}
 .detimgw.need .detimg{filter:grayscale(1) brightness(.8);opacity:.5}
 .detinfo{text-align:center;margin-bottom:4px}.detinfo h3{font-size:1.05rem}.detinfo p{font-size:.78rem;color:var(--muted);margin-top:4px}
+.cfm{text-align:center}
+.cfm-ico{width:46px;height:46px;border-radius:50%;background:rgba(239,68,68,.15);color:#f87171;font-size:1.5rem;font-weight:800;display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
+.cfm h2{margin-bottom:8px}
+.cfm-body{font-size:.88rem;color:var(--muted);line-height:1.55;margin-bottom:14px}
+.cfm-body b{color:var(--text)}
+.cfm-body .cfm-warn{display:block;margin-top:8px;color:#fbbf24}
+.cfm-lbl{display:block;font-size:.8rem;color:var(--muted);margin-bottom:6px}
+.cfm-lbl b{color:var(--text)}
+#cfm-ok:disabled{opacity:.35;cursor:not-allowed}
 .vtot{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:.9rem;margin-bottom:14px}
 .vtot span{color:var(--muted)}.vtot b{text-align:right}
 .vtot .vsum{border-top:1px solid var(--border);padding-top:8px;color:var(--text);font-weight:700}
@@ -468,6 +477,22 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     <div class="mfoot">
       <button class="btn btn-ghost" onclick="closeM('m-set')">Cancel</button>
       <button class="btn btn-red" onclick="doSave()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="m-confirm">
+  <div class="modal m-set cfm">
+    <div class="cfm-ico">!</div>
+    <h2 id="cfm-title"></h2>
+    <p class="cfm-body" id="cfm-body"></p>
+    <div id="cfm-type" class="hidden">
+      <label class="cfm-lbl" for="cfm-input">Type <b id="cfm-word"></b> to confirm</label>
+      <input class="fi" id="cfm-input" autocomplete="off" spellcheck="false" oninput="cfmCheck()" onkeydown="if(event.key==='Enter')confirmOk()">
+    </div>
+    <div class="mfoot">
+      <button class="btn btn-ghost" id="cfm-cancel" onclick="closeM('m-confirm')">Cancel</button>
+      <button class="btn btn-red" id="cfm-ok" onclick="confirmOk()"></button>
     </div>
   </div>
 </div>
@@ -1065,9 +1090,50 @@ function doSave() {
   save(); renderAll(); closeM('m-set');
 }
 
-function doDelBinder() {
+/* In-app replacement for confirm(). Resolves true/false; typeToConfirm makes the user type a word first. */
+let confirmRes = null, confirmWord = '';
+function askConfirm({ title, body, confirmLabel = 'Confirm', typeToConfirm = '' }) {
+  return new Promise(res => {
+    if (confirmRes) confirmRes(false);
+    confirmRes = res;
+    confirmWord = typeToConfirm;
+    document.getElementById('cfm-title').textContent = title;
+    document.getElementById('cfm-body').innerHTML = body;
+    document.getElementById('cfm-ok').textContent = confirmLabel;
+    document.getElementById('cfm-type').classList.toggle('hidden', !typeToConfirm);
+    document.getElementById('cfm-word').textContent = typeToConfirm;
+    const inp = document.getElementById('cfm-input');
+    inp.value = '';
+    cfmCheck();
+    openM('m-confirm');
+    (typeToConfirm ? inp : document.getElementById('cfm-cancel')).focus();
+  });
+}
+function cfmCheck() {
+  const ok = !confirmWord || document.getElementById('cfm-input').value.trim().toLowerCase() === confirmWord.trim().toLowerCase();
+  document.getElementById('cfm-ok').disabled = !ok;
+}
+function confirmOk() {
+  if (document.getElementById('cfm-ok').disabled) return;
+  const r = confirmRes; confirmRes = null;
+  closeM('m-confirm');
+  r?.(true);
+}
+
+async function doDelBinder() {
   const b = ab(); if (!b) return;
-  if (!confirm(`Delete "${b.name}"? This cannot be undone.`)) return;
+  const n = b.slots.filter(Boolean).length;
+  const need = b.slots.filter(c => c && c.owned === false).length;
+  const ok = await askConfirm({
+    title: `Delete “${b.name}”?`,
+    body: n
+      ? `This permanently removes the binder and its <b>${n.toLocaleString()} card${n === 1 ? '' : 's'}</b>${need ? ` (including ${need.toLocaleString()} still to get)` : ''}. It can't be undone.`
+        + (sync.token ? '<span class="cfm-warn">Cloud sync is on, so it will be removed from your other devices too. The earlier version stays in your gist\'s revision history on GitHub.</span>' : '')
+      : 'This binder is empty. It will be removed.',
+    confirmLabel: 'Delete binder',
+    typeToConfirm: n ? b.name : '',
+  });
+  if (!ok || ab() !== b) return;
   st.binders = st.binders.filter(x => x.id !== b.id);
   st.activeId = st.binders[0]?.id || null;
   pg = 0; save(); renderAll(); closeM('m-set');
@@ -1326,6 +1392,7 @@ function doBulkAdd() {
 /* ── Modal helpers ────────────────────────────────────────── */
 function openM(id) { document.getElementById(id).classList.remove('hidden'); }
 function closeM(id) {
+  if (id === 'm-confirm' && confirmRes) { const r = confirmRes; confirmRes = null; r(false); }
   if (id === 'm-val') valRun++;   // stop any price lookup in progress
   document.getElementById(id).classList.add('hidden');
   if (id === 'm-add')  document.getElementById('set-drop').classList.add('hidden');
@@ -1337,7 +1404,8 @@ document.querySelectorAll('.overlay').forEach(el => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') ['m-add','m-det','m-new','m-set','m-bulk','m-sync','m-val'].forEach(closeM);
+  if (e.key === 'Escape' && !document.getElementById('m-confirm').classList.contains('hidden')) { closeM('m-confirm'); return; }   // only the top dialog
+  if (e.key === 'Escape') ['m-confirm','m-add','m-det','m-new','m-set','m-bulk','m-sync','m-val'].forEach(closeM);
   if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
   const d = e.key === 'ArrowLeft' ? -1 : 1;
