@@ -1,6 +1,6 @@
-# Pokémon Card Binder
+# MegaBinder
 
-A single-file browser app for tracking your physical Pokémon TCG collection. Searches real card data and art via the [PokéTCG.io](https://pokemontcg.io) API, stores your collection locally in the browser.
+A single-file browser app for tracking your physical Pokémon TCG collection. Searches real card data and art via the [TCGdex](https://tcgdex.dev) API, stores your collection locally in the browser.
 
 ---
 
