@@ -770,6 +770,12 @@ function nextClick() {
 }
 function addPage() {
   const b = ab(); if (!b) return;
+  const last = totalPg(b) - 1;
+  if (!b.slots.slice(last * spp(b), (last + 1) * spp(b)).some(Boolean)) {   // the last page has no cards yet
+    pg = last; renderAll();
+    showToast("The last page is still empty, so a new page wasn't added. Fill it first.");
+    return;
+  }
   b.pages = totalPg(b) + 1;
   pg = b.pages - 1;
   save(); renderAll();
@@ -2047,7 +2053,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.12';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.13';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
