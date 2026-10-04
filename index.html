@@ -592,7 +592,7 @@ function load() {
   if (!st.activeId && st.binders.length) st.activeId = st.binders[0].id;
 }
 function save() {
-  st.modified = Date.now();
+  st.modified = Math.max(Date.now(), (st.modified || 0) + 1);   // always moves forward, even for two saves in one millisecond
   try { localStorage.setItem(SK, JSON.stringify(st)); } catch {}
   queueSync();
 }
@@ -1562,8 +1562,8 @@ async function syncNow(manual) {
     let action;
     if (!remote)                       action = 'push';   // nothing in the cloud yet
     else if (rmod === local)           action = 'none';
-    else if (!st.binders.length)       action = 'pull';
-    else if (!remote.binders?.length)  action = 'push';
+    else if (!sync.base && !st.binders.length)      action = 'pull';   // fresh device that has never synced
+    else if (!sync.base && !remote.binders?.length) action = 'push';   // brand-new empty gist
     else {
       const lc = local > sync.base, rc = rmod > sync.base;
       action = lc && rc ? await askConflict(remote) : (rc ? 'pull' : 'push');
