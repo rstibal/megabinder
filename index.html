@@ -95,6 +95,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
   .binder-ctrl .sect:first-child{order:0}
   .blist{order:1}.sect2{order:3}.b-add{order:4}.b-val{order:5}.b-shop{order:6}.b-set{order:7}
   .b-install{order:8}
+  .ro-note{order:2}.b-share{order:6}
   #sync-btn{order:9;margin-top:auto}
   .lbl{display:inline}
   .sync-st{font-size:.7rem;opacity:.85;font-weight:500}
@@ -132,6 +133,12 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .sync-stat{font-size:.88rem;margin-bottom:12px}
 .sync-stat.err{color:#fca5a5}
 .bcard.need img{filter:grayscale(1) brightness(.8);opacity:.45}
+/* Shared (read-only) view: hide everything that edits */
+body.ro .b-add,body.ro .b-set,body.ro .b-new,body.ro .sect-add,body.ro #sync-btn,body.ro #install-btn,body.ro #binder-sel,body.ro #blist,body.ro .binder-ctrl .sect:first-child,body.ro #det-own,body.ro #det-rm,body.ro #rm-page,body.ro .b-share{display:none!important}
+body.ro .slot-empty{pointer-events:none}
+.ro-note{display:none;font-size:.78rem;color:var(--muted);line-height:1.4;padding:0 4px}
+.ro-note a{color:#93c5fd}
+body.ro .ro-note{display:block}
 .bcard.need{border-color:transparent}
 
 /* ── Variant overlay effects ─────────────────────────────── */
@@ -348,10 +355,12 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     <div class="sect"><span>Binders</span><button class="sect-add" onclick="openNewBinder()" title="New binder" aria-label="New binder">+</button></div>
     <select class="binder-sel" id="binder-sel" onchange="switchBinder(this.value)"></select>
     <nav class="blist" id="blist"></nav>
+    <div class="ro-note">Shared binder, view only. It's a snapshot from when the link was made. <a href="./">Open my binders</a></div>
     <div class="sect sect2"><span>This binder</span></div>
     <button class="btn btn-ghost b-add" onclick="openBulk()">+ Add by Set</button>
     <button class="btn btn-ghost b-val" onclick="openValue()" title="Add up TCGplayer prices for this binder"><span class="ico">$</span><span class="lbl">Binder value</span></button>
     <button class="btn btn-ghost b-shop" onclick="openShop()" title="Cards you still need, with prices and buy links"><span class="ico">🛒</span><span class="lbl">Shopping list</span></button>
+    <button class="btn btn-ghost b-share" onclick="shareBinder()" title="Copy a link to a read-only copy of this binder"><span class="ico">🔗</span><span class="lbl">Share link</span></button>
     <button class="btn btn-ghost b-set" onclick="openSettings()" title="Binder settings"><span class="ico">⚙️</span><span class="lbl">Binder settings</span></button>
     <button class="btn btn-ghost b-install hidden" id="install-btn" onclick="installApp()" title="Add MegaBinder to your home screen or desktop"><span class="ico">⤓</span><span class="lbl">Install app</span></button>
     <button class="btn btn-ghost" id="sync-btn" data-state="off" onclick="openSync()" title="Cloud sync (off)"><span class="ico">☁</span><span class="lbl sync-lbl">Cloud sync</span><span class="lbl sync-st" id="sync-st"></span></button>
@@ -650,6 +659,8 @@ const VL = { normal:'Normal', reverse_holo:'Rev. Holo', holo:'Holo', full_art:'F
 
 /* ── App state ────────────────────────────────────────────── */
 let st       = { binders:[], activeId:null };
+const SHARE_TOKEN = (location.hash.match(/^#share=([\w-]+)$/) || [])[1] || '';
+const RO = !!SHARE_TOKEN;   // opened from a share link: read-only
 let pg       = 0;
 let addSlot  = null;   // which slot index we're adding to (null = next empty)
 let selCard  = null;   // card object selected from search
@@ -671,6 +682,7 @@ let bsT            = null;
 
 /* ── Persistence ──────────────────────────────────────────── */
 function load() {
+  if (RO) return;
   try {
     const r = localStorage.getItem(SK);
     if (r) st = JSON.parse(r);
@@ -679,6 +691,7 @@ function load() {
   if (!st.activeId && st.binders.length) st.activeId = st.binders[0].id;
 }
 function save() {
+  if (RO) return;   // a shared view never writes to this browser or syncs
   st.modified = Math.max(Date.now(), (st.modified || 0) + 1);   // always moves forward, even for two saves in one millisecond
   try { localStorage.setItem(SK, JSON.stringify(st)); } catch {}
   queueSync();
@@ -740,7 +753,7 @@ function autoPg(b) {
 const totalPg = b => Math.max(autoPg(b), b.pages || 1);
 function nextClick() {
   const b = ab(); if (!b) return;
-  if (!filtering() && pg >= totalPg(b) - 1) addPage(); else goPage(1);
+  if (!RO && !filtering() && pg >= totalPg(b) - 1) addPage(); else goPage(1);
 }
 function addPage() {
   const b = ab(); if (!b) return;
@@ -963,7 +976,7 @@ function renderBinder() {
   document.querySelectorAll('#f-seg button').forEach(x => x.classList.toggle('on', x.dataset.f === ff));
 
   prev.disabled = pg === 0;
-  const atEnd = !filtering() && pg >= tp - 1;   // on the last page: the arrow becomes "add a page"
+  const atEnd = !RO && !filtering() && pg >= tp - 1;   // on the last page: the arrow becomes "add a page"
   next.disabled = filtering() && pg >= tp - 1;
   next.textContent = atEnd ? '+' : '›';
   next.title = atEnd ? 'Add a page' : 'Next page';
@@ -989,7 +1002,7 @@ function renderBinder() {
   cg.innerHTML = Array.from({length: per}, (_, i) => {
     const idx  = start + i;
     const card = b.slots[idx] || null;
-    return card ? renderFilled(card, idx) : `<div class="slot slot-empty" onclick="openAdd(${idx})">+</div>`;
+    return card ? renderFilled(card, idx) : RO ? '<div class="slot slot-empty"></div>' : `<div class="slot slot-empty" onclick="openAdd(${idx})">+</div>`;
   }).join('');
 }
 
@@ -1182,7 +1195,7 @@ function openDetail(idx) {
   const b = ab(); if (!b) return;
   const c = b.slots[idx];
   if (Date.now() < noOpenUntil) return;
-  if (!c) { openAdd(idx); return; }
+  if (!c) { if (!RO) openAdd(idx); return; }
   detIdx = idx;
   const list = viewList(b);
   const at = list.indexOf(idx);
@@ -1221,7 +1234,7 @@ const ctxEl = () => document.getElementById('ctx');
 function hideCtx() { ctxEl().classList.add('hidden'); }
 
 function openCtx(idx, x, y) {
-  const b = ab(); const c = b?.slots[idx]; if (!c) return;
+  const b = ab(); const c = b?.slots[idx]; if (!c || RO) return;
   const need = c.owned === false;
   const el = ctxEl();
   el.innerHTML = `<div class="hd">${esc(c.name)}${c.number ? ' #' + esc(c.number) : ''}</div>
@@ -1853,10 +1866,77 @@ async function installApp() {
 }
 showInstall();
 
+/* ── Share link: a read-only snapshot of one binder, packed into the URL hash ─────────
+   Nothing is uploaded: the binder is compressed into the link itself (#share=...), and the page rebuilds it
+   from the link. Card pictures still come from TCGdex. */
+const b64u = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode(...u8.subarray(i, i + 8192)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+const unb64u = t => Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/')), ch => ch.charCodeAt(0));
+async function pipeBytes(u8, stream) { return new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(stream)).arrayBuffer()); }
+const largeOf = s => s.endsWith('/low.webp') ? s.slice(0, -9) + '/high.webp' : s.replace(/\.png$/, '_hires.png');
+
+function packBinder(b) {
+  return JSON.stringify({
+    v: 1, n: b.name, r: b.rows, c: b.cols, p: b.pages || 0,
+    s: b.slots.map(c => !c ? 0 : [c.tcgId || '', c.name, c.set || '', c.setId || '', c.number || '', c.rarity || '', c.variant || 'normal',
+      c.owned === false ? 0 : 1, c.imageSmall || '', c.imageLarge && c.imageLarge !== largeOf(c.imageSmall || '') ? c.imageLarge : '']),
+  });
+}
+function unpackBinder(d) {
+  if (d.v !== 1 || !Array.isArray(d.s)) throw new Error('unsupported');
+  return {
+    id: 'shared', name: String(d.n || 'Shared binder'), rows: Math.max(1, d.r | 0), cols: Math.max(1, d.c | 0), pages: d.p || undefined,
+    slots: d.s.map((a, i) => !a ? null : {
+      id: 'sh' + i, tcgId: a[0], name: a[1], set: a[2], setId: a[3], number: a[4], rarity: a[5], variant: a[6],
+      ...(a[7] ? {} : { owned: false }), imageSmall: a[8], imageLarge: a[9] || largeOf(a[8]),
+    }),
+  };
+}
+async function encodeShare(b) {
+  const raw = new TextEncoder().encode(packBinder(b));
+  if (typeof CompressionStream === 'undefined') return 'p' + b64u(raw);   // old browser: uncompressed
+  return 'z' + b64u(await pipeBytes(raw, new CompressionStream('deflate-raw')));
+}
+async function decodeShare(tok) {
+  let raw = unb64u(tok.slice(1));
+  if (tok[0] === 'z') raw = await pipeBytes(raw, new DecompressionStream('deflate-raw'));
+  else if (tok[0] !== 'p') throw new Error('unknown format');
+  return unpackBinder(JSON.parse(new TextDecoder().decode(raw)));
+}
+
+async function shareBinder() {
+  const b = ab(); if (!b || RO) return;
+  let url;
+  try { url = `${location.origin}${location.pathname}#share=${await encodeShare(b)}`; }
+  catch { showToast("Couldn't build a share link in this browser"); return; }
+  const n = b.slots.filter(Boolean).length;
+  const long = url.length > 30000 ? ' It is a long link, so some chat apps may cut it off.' : '';
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast(`Link copied: ${n} card${n === 1 ? '' : 's'}, view only. Share again after you change the binder.${long}`);
+  } catch {
+    prompt('Copy this link (a read-only snapshot of the binder):', url);
+  }
+}
+
+async function initShared() {
+  document.body.classList.add('ro');
+  try {
+    const b = await decodeShare(SHARE_TOKEN);
+    st = { binders: [b], activeId: b.id };
+    document.title = `${b.name} · MegaBinder`;
+    renderAll();
+  } catch {
+    const e = document.getElementById('empty-msg');
+    e.querySelector('h2').textContent = "This link couldn't be read";
+    e.querySelector('p').innerHTML = 'It may have been cut off when it was shared. Ask for a fresh link, or <a href="./" style="color:#93c5fd">open your own binders</a>.';
+    renderAll();
+  }
+}
+
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.9';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.10';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
@@ -2051,13 +2131,16 @@ function esc(s) {
 }
 
 /* ── Init ─────────────────────────────────────────────────── */
-load();
-loadSync();
-setSync(sync.token ? 'idle' : 'off', sync.token ? 'connected' : 'off');
-if (sync.token) syncNow();
-navigator.storage?.persist?.();   // ask the browser not to evict saved binders under storage pressure
-loadSets();   // background — fetches & caches all set names for autocomplete
-renderAll();
+if (RO) initShared();
+else {
+  load();
+  loadSync();
+  setSync(sync.token ? 'idle' : 'off', sync.token ? 'connected' : 'off');
+  if (sync.token) syncNow();
+  navigator.storage?.persist?.();   // ask the browser not to evict saved binders under storage pressure
+  loadSets();   // background — fetches & caches all set names for autocomplete
+  renderAll();
+}
 </script>
 </body>
 </html>
