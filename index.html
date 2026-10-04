@@ -95,7 +95,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
   .binder-ctrl .sect:first-child{order:0}
   .blist{order:1}.sect2{order:3}.b-add{order:4}.b-val{order:5}.b-shop{order:6}.b-set{order:7}
   .b-install{order:8}
-  .ro-note{order:2}.b-share{order:6}
+  .ro-note{order:2}.b-share,.b-rearr{order:6}
   #sync-btn{order:9;margin-top:auto}
   .lbl{display:inline}
   .sync-st{font-size:.7rem;opacity:.85;font-weight:500}
@@ -136,6 +136,17 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 /* Shared (read-only) view: hide everything that edits */
 body.ro .b-add,body.ro .b-set,body.ro .b-new,body.ro .sect-add,body.ro #sync-btn,body.ro #install-btn,body.ro #binder-sel,body.ro #blist,body.ro .binder-ctrl .sect:first-child,body.ro #det-own,body.ro #det-rm,body.ro #rm-page,body.ro .b-share{display:none!important}
 body.ro .slot-empty{pointer-events:none}
+body.ro .b-rearr{display:none!important}
+/* Rearranging (drag a card onto another slot); off until the lock is opened */
+.b-rearr.on{background:rgba(250,204,21,.14)!important;border-color:#facc15!important;color:#fde68a!important}
+body.rearr .slot-filled{cursor:grab;touch-action:none;box-shadow:0 0 0 1px rgba(250,204,21,.55),0 2px 8px rgba(0,0,0,.5)}
+body.rearr .slot-filled:hover{transform:none}
+body.drag-on,body.drag-on *{cursor:grabbing!important;user-select:none;-webkit-user-select:none}
+.slot.drag-src{opacity:.35}
+.slot.drop-t{outline:2px solid #facc15;outline-offset:2px}
+.nav-btn.drop-t{border-color:#facc15;background:rgba(250,204,21,.14)}
+.drag-ghost{position:fixed;z-index:200;pointer-events:none;width:84px;aspect-ratio:2.5/3.5;border-radius:6px;overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.6);transform:translate(-50%,-50%) rotate(3deg);opacity:.92;background:var(--surf2)}
+.drag-ghost img{width:100%;height:100%;object-fit:cover;display:block}
 .ro-note{display:none;font-size:.78rem;color:var(--muted);line-height:1.4;padding:0 4px}
 .ro-note a{color:#93c5fd}
 body.ro .ro-note{display:block}
@@ -360,6 +371,7 @@ body.ro .ro-note{display:block}
     <button class="btn btn-ghost b-add" onclick="openBulk()">+ Add by Set</button>
     <button class="btn btn-ghost b-val" onclick="openValue()" title="Add up TCGplayer prices for this binder"><span class="ico">$</span><span class="lbl">Binder value</span></button>
     <button class="btn btn-ghost b-shop" onclick="openShop()" title="Cards you still need, with prices and buy links"><span class="ico">🛒</span><span class="lbl">Shopping list</span></button>
+    <button class="btn btn-ghost b-rearr" id="rearr-btn" onclick="toggleRearr()" title="Layout is locked. Click to unlock and drag cards into new slots"><span class="ico" id="rearr-ico">🔒</span><span class="lbl" id="rearr-lbl">Layout locked</span></button>
     <button class="btn btn-ghost b-share" onclick="shareBinder()" title="Copy a link to a read-only copy of this binder"><span class="ico">🔗</span><span class="lbl">Share link</span></button>
     <button class="btn btn-ghost b-set" onclick="openSettings()" title="Binder settings"><span class="ico">⚙️</span><span class="lbl">Binder settings</span></button>
     <button class="btn btn-ghost b-install hidden" id="install-btn" onclick="installApp()" title="Add MegaBinder to your home screen or desktop"><span class="ico">⤓</span><span class="lbl">Install app</span></button>
@@ -722,6 +734,7 @@ const pagesNow = b => filtering() ? Math.max(1, Math.ceil(viewList(b).length / s
 
 function applyFind(was) {
   const now = filtering();
+  if (now && rearr) { rearr = false; syncRearr(); }   // filtered positions aren't the real layout
   if (!was && now) { pgSaved = pg; pg = 0; }
   else if (was && !now) pg = pgSaved;
   else pg = 0;
@@ -1003,7 +1016,7 @@ function renderBinder() {
   cg.innerHTML = Array.from({length: per}, (_, i) => {
     const idx  = start + i;
     const card = b.slots[idx] || null;
-    return card ? renderFilled(card, idx) : RO ? '<div class="slot slot-empty"></div>' : `<div class="slot slot-empty" onclick="openAdd(${idx})">+</div>`;
+    return card ? renderFilled(card, idx) : RO ? '<div class="slot slot-empty"></div>' : `<div class="slot slot-empty" data-idx="${idx}" onclick="openAdd(${idx})">+</div>`;
   }).join('');
 }
 
@@ -1256,6 +1269,103 @@ function openCtx(idx, x, y) {
   el.querySelector('button').focus({ preventScroll: true });
 }
 
+/* ── Rearranging: unlock the layout, then drag a card onto another slot ─────────────
+   Dropping on an empty slot moves the card; dropping on a filled one swaps the two. Hovering a dragged
+   card over the page arrows turns the page. The layout re-locks on every page load and while searching. */
+let rearr = false;
+function syncRearr() {
+  document.body.classList.toggle('rearr', rearr);
+  document.getElementById('rearr-btn').classList.toggle('on', rearr);
+  document.getElementById('rearr-ico').textContent = rearr ? '🔓' : '🔒';
+  document.getElementById('rearr-lbl').textContent = rearr ? 'Rearranging' : 'Layout locked';
+  document.getElementById('rearr-btn').title = rearr ? 'Click to lock the layout again' : 'Layout is locked. Click to unlock and drag cards into new slots';
+}
+function toggleRearr() {
+  if (RO) return;
+  if (!rearr && filtering()) { showToast('Clear the search or filter first: rearranging needs the full page layout'); return; }
+  rearr = !rearr; hideCtx(); syncRearr();
+  if (rearr) showToast('Layout unlocked: drag a card onto another slot. Lock it again when you are done.');
+}
+
+function moveCard(from, to) {
+  const b = ab(); if (!b) return;
+  while (b.slots.length <= to) b.slots.push(null);
+  const a = b.slots[from], z = b.slots[to];
+  if (!a) return;
+  const swap = (arr, i, j) => { [arr[i], arr[j]] = [arr[j], arr[i]]; while (arr.length && !arr[arr.length - 1]) arr.pop(); };
+  swap(b.slots, from, to);
+  save(); renderAll();
+  showToast(z ? `Swapped ${a.name} and ${z.name}` : `Moved ${a.name}`, 'Undo', () => {
+    const bb = st.binders.find(x => x.id === b.id); if (!bb) return;
+    while (bb.slots.length <= Math.max(from, to)) bb.slots.push(null);
+    if (bb.slots[to]?.id !== a.id || (bb.slots[from]?.id || null) !== (z?.id || null)) { showToast('The layout has changed since'); return; }
+    swap(bb.slots, from, to); save(); renderAll();
+  });
+}
+
+(() => {
+  const cg = document.getElementById('cg');
+  let d = null;   // the drag in progress: { idx, x0, y0, on, ghost, over, btn, flipT }
+  const under = (x, y) => document.elementFromPoint(x, y);
+  const mark = el => { if (d.over !== el) { d.over?.classList.remove('drop-t'); d.over = el; el?.classList.add('drop-t'); } };
+  function end() {
+    if (!d) return;
+    clearTimeout(d.flipT); d.ghost?.remove(); d.over?.classList.remove('drop-t');
+    document.querySelectorAll('.drag-src').forEach(x => x.classList.remove('drag-src'));
+    document.body.classList.remove('drag-on');
+    d = null;
+  }
+  cg.addEventListener('dragstart', e => e.preventDefault());   // no browser-native picture dragging
+  cg.addEventListener('pointerdown', e => {
+    if (!rearr || filtering() || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    const el = e.target.closest('.slot-filled'); if (!el) return;
+    d = { idx: +el.dataset.idx, x0: e.clientX, y0: e.clientY, on: false, over: null, btn: null, flipT: 0, ghost: null };
+  });
+  addEventListener('pointermove', e => {
+    if (!d) return;
+    if (!d.on) {
+      if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 7) return;
+      const c = ab()?.slots[d.idx]; if (!c) { end(); return; }
+      d.on = true;
+      d.ghost = document.createElement('div');
+      d.ghost.className = 'drag-ghost';
+      d.ghost.innerHTML = `<img src="${esc(cardImg(c, 'small'))}" alt="">`;
+      document.body.appendChild(d.ghost);
+      document.body.classList.add('drag-on');
+      cg.querySelector(`[data-idx="${d.idx}"]`)?.classList.add('drag-src');
+    }
+    d.ghost.style.left = e.clientX + 'px'; d.ghost.style.top = e.clientY + 'px';
+    const hit = under(e.clientX, e.clientY);
+    const arrow = hit?.closest('#prev-btn,#next-btn');
+    const slot = hit?.closest('#cg .slot');
+    mark(arrow && !arrow.disabled ? arrow : slot && +slot.dataset.idx !== d.idx ? slot : null);
+    const btn = arrow && !arrow.disabled && !(arrow.id === 'next-btn' && arrow.classList.contains('add')) ? arrow : null;
+    if (btn !== d.btn) {
+      clearTimeout(d.flipT); d.btn = btn;
+      if (btn) {
+        const flip = () => {
+          goPage(btn.id === 'next-btn' ? 1 : -1);
+          cg.querySelector(`[data-idx="${d.idx}"]`)?.classList.add('drag-src');
+          d.flipT = setTimeout(flip, 800);
+        };
+        d.flipT = setTimeout(flip, 600);
+      }
+    }
+  });
+  addEventListener('pointerup', e => {
+    if (!d) return;
+    if (d.on) {
+      noOpenUntil = Date.now() + 400;   // the drop must not also open the card
+      const slot = under(e.clientX, e.clientY)?.closest('#cg .slot');
+      const from = d.idx, to = slot ? +slot.dataset.idx : -1;
+      end();
+      if (to >= 0 && to !== from) moveCard(from, to);
+    } else end();
+  });
+  addEventListener('pointercancel', end);
+  addEventListener('keydown', e => { if (e.key === 'Escape' && d?.on) end(); });
+})();
+
 let toastT = null;
 function showToast(msg, actLabel, act) {
   const t = document.getElementById('toast'), btn = document.getElementById('toast-act');
@@ -1292,7 +1402,7 @@ function removeCard(idx) {
   let t = null, x0 = 0, y0 = 0;
   cg.addEventListener('touchstart', e => {
     const el = e.target.closest('.slot-filled');
-    if (!el || e.touches.length !== 1) return;
+    if (!el || rearr || e.touches.length !== 1) return;
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
     clearTimeout(t);
     t = setTimeout(() => { noOpenUntil = Date.now() + 800; navigator.vibrate?.(15); openCtx(+el.dataset.idx, x0, y0); }, 480);
@@ -1937,7 +2047,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.11';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.12';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
