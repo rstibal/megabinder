@@ -69,21 +69,22 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
   body{padding-left:230px}
   .header{position:fixed;left:0;top:0;bottom:0;width:230px;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:18px;padding:18px 14px;border-bottom:none;border-right:1px solid var(--border);overflow-y:auto}
   .binder-ctrl{flex:1;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:6px}
-  .binder-sel,.b-new{display:none}
+  .binder-sel,.binder-ctrl .btn.b-new{display:none}
   .blist{display:flex;flex-direction:column;gap:2px;max-height:42vh;overflow-y:auto}
-  .binder-ctrl .btn{text-align:left;border-color:transparent;padding:8px 10px}
-  .binder-ctrl .btn:hover{background:rgba(255,255,255,.06)}
+  .binder-ctrl .btn{display:flex;align-items:center;gap:10px;text-align:left;padding:9px 12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);color:var(--text)}
+  .binder-ctrl .btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.28)}
+  .ico{width:18px;text-align:center;flex-shrink:0}
+  .sync-lbl{flex:1}
   .sect{display:flex;justify-content:space-between;align-items:center;font-size:.66rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);padding:0 4px 0 10px;margin-top:2px}
   .sect2{margin-top:16px}
   .sect-add{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:1rem;line-height:1;cursor:pointer}
   .sect-add:hover{border-color:var(--red);color:var(--text);background:rgba(239,68,68,.1)}
-  .binder-ctrl .b-add{background:var(--red);color:#fff;text-align:center}
-  .binder-ctrl .b-add:hover{background:#dc2626}
+  .binder-ctrl .b-add{background:var(--red);border-color:var(--red);color:#fff;justify-content:center}
+  .binder-ctrl .b-add:hover{background:#dc2626;border-color:#dc2626}
   .binder-ctrl .sect:first-child{order:0}
   .blist{order:1}.sect2{order:3}.b-add{order:4}.b-val{order:5}.b-set{order:6}
-  #sync-btn{order:9;margin-top:auto;border-top:1px solid var(--border)!important;border-radius:0 0 7px 7px;padding-top:12px!important}
+  #sync-btn{order:9;margin-top:auto}
   .lbl{display:inline}
-  #sync-btn{display:flex;justify-content:space-between;align-items:center}
   .sync-st{font-size:.7rem;opacity:.85;font-weight:500}
   .viewport{padding:28px 32px 48px}
 }
@@ -286,9 +287,9 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
     <nav class="blist" id="blist"></nav>
     <div class="sect sect2"><span>This binder</span></div>
     <button class="btn btn-ghost b-add" onclick="openBulk()">+ Add by Set</button>
-    <button class="btn btn-ghost b-val" onclick="openValue()" title="Add up TCGplayer prices for this binder">$<span class="lbl"> Binder value</span></button>
-    <button class="btn btn-ghost b-set" onclick="openSettings()" title="Binder settings">⚙️<span class="lbl"> Binder settings</span></button>
-    <button class="btn btn-ghost" id="sync-btn" data-state="off" onclick="openSync()" title="Cloud sync (off)">☁<span class="lbl"> Cloud sync</span><span class="lbl sync-st" id="sync-st"></span></button>
+    <button class="btn btn-ghost b-val" onclick="openValue()" title="Add up TCGplayer prices for this binder"><span class="ico">$</span><span class="lbl">Binder value</span></button>
+    <button class="btn btn-ghost b-set" onclick="openSettings()" title="Binder settings"><span class="ico">⚙️</span><span class="lbl">Binder settings</span></button>
+    <button class="btn btn-ghost" id="sync-btn" data-state="off" onclick="openSync()" title="Cloud sync (off)"><span class="ico">☁</span><span class="lbl sync-lbl">Cloud sync</span><span class="lbl sync-st" id="sync-st"></span></button>
     <button class="btn btn-red b-new" onclick="openNewBinder()">+ New Binder</button>
   </div>
 </header>
