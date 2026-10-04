@@ -1208,6 +1208,14 @@ async function eurUsd() {
   } catch {}
   return c?.rate || null;
 }
+/* Price used in totals: TCGplayer market, else Cardmarket trend converted to USD (flagged est) */
+function priceOf(d, variant, fx) {
+  const p = tcgPrice(d, variant);
+  if (p?.marketPrice != null) return { v: p.marketPrice, est: false, pid: p.productId, updated: p.updated };
+  const t = d?.pricing?.cardmarket?.trend;
+  if (t != null && fx) return { v: t * fx, est: true, pid: tcgProductId(d, variant), updated: d.pricing.cardmarket.updated };
+  return { v: null, est: false, pid: p?.productId ?? tcgProductId(d, variant), updated: '' };
+}
 /* TCGdex sometimes has no TCGplayer prices for a card (e.g. promos) but still lists its TCGplayer product id */
 const FIN_TYPES = { reverse_holo: ['reverse', 'reverse-holo'], normal: ['normal'], holo: ['holo'] };
 function tcgProductId(d, variant) {
@@ -1499,21 +1507,24 @@ async function openValue() {
   const got = await fetchDetails(ids, () => run === valRun, n => { body.innerHTML = progressHtml(n, ids.length); });
   if (run !== valRun) return;   // closed or restarted
 
-  let own = 0, need = 0, nOwn = 0, nNeed = 0, none = 0, newest = '';
+  const fx = await eurUsd();
+  if (run !== valRun) return;
+  let own = 0, need = 0, nOwn = 0, nNeed = 0, none = 0, nEst = 0, newest = '';
   const priced = [];
   for (const c of b.slots) {
     if (!c) continue;
-    const p = c.tcgId ? tcgPrice(got.get(c.tcgId), c.variant) : null;
-    const v = p?.marketPrice;
+    const p = c.tcgId ? priceOf(got.get(c.tcgId), c.variant, fx) : { v: null };
+    const v = p.v;
     if (v == null) { none++; continue; }
     const isNeed = c.owned === false;
     if (isNeed) { need += v; nNeed++; } else { own += v; nOwn++; }
-    priced.push({ c, v, isNeed });
-    if ((p.updated || '') > newest) newest = p.updated;
+    if (p.est) nEst++;
+    priced.push({ c, v, isNeed, est: p.est });
+    if (!p.est && (p.updated || '') > newest) newest = p.updated;
   }
   priced.sort((a, z) => z.v - a.v);
-  const top = priced.slice(0, 5).map(({ c, v, isNeed }) =>
-    `<div class="vrow${isNeed ? ' need' : ''}"><span>${esc(c.name)} ${c.number ? '#' + esc(c.number) : ''}${c.variant && c.variant !== 'normal' ? ' · ' + esc(VL[c.variant] || c.variant) : ''}${isNeed ? ' (need)' : ''}</span><b>${usd(v)}</b></div>`).join('');
+  const top = priced.slice(0, 5).map(({ c, v, isNeed, est }) =>
+    `<div class="vrow${isNeed ? ' need' : ''}"><span>${esc(c.name)} ${c.number ? '#' + esc(c.number) : ''}${c.variant && c.variant !== 'normal' ? ' · ' + esc(VL[c.variant] || c.variant) : ''}${isNeed ? ' (need)' : ''}</span><b>${est ? '≈ ' : ''}${usd(v)}</b></div>`).join('');
   body.innerHTML = `
     <div class="vtot">
       <span>Collected (${nOwn} card${nOwn === 1 ? '' : 's'})</span><b>${usd(own)}</b>
@@ -1521,7 +1532,7 @@ async function openValue() {
       ${nNeed ? `<span class="vsum">Whole binder</span><b class="vsum">${usd(own + need)}</b>` : ''}
     </div>
     ${top ? `<div class="vtop"><h4>Most valuable</h4>${top}</div>` : ''}
-    <p class="vnote">TCGplayer market prices${newest ? `, updated ${esc(newest.slice(0, 10))}` : ''}.${none ? ` ${none} card${none === 1 ? ' has' : 's have'} no price and ${none === 1 ? 'is' : 'are'} not counted.` : ''}</p>`;
+    <p class="vnote">TCGplayer market prices${newest ? `, updated ${esc(newest.slice(0, 10))}` : ''}.${nEst ? ` ${nEst} card${nEst === 1 ? ' has' : 's have'} no TCGplayer price, so ${nEst === 1 ? 'its' : 'their'} Cardmarket trend, converted to USD, is counted instead (marked ≈).` : ''}${none ? ` ${none} card${none === 1 ? ' has' : 's have'} no price and ${none === 1 ? 'is' : 'are'} not counted.` : ''}</p>`;
 }
 
 /* ── Shopping list: the cards marked Need, with TCGplayer prices and buy links ── */
@@ -1548,10 +1559,13 @@ async function openShop() {
   if (!shopRows.length) return;
   const got = await fetchDetails(ids, () => run === shopRun, n => renderShop(`Looking up prices… ${n} of ${ids.length}`));
   if (run !== shopRun) return;
+  const fx = await eurUsd();
+  if (run !== shopRun) return;
   for (const r of shopRows) {
-    const p = r.c.tcgId ? tcgPrice(got.get(r.c.tcgId), r.c.variant) : null;
-    r.price = p?.marketPrice ?? null;
-    r.pid = p?.productId ?? null;
+    const p = r.c.tcgId ? priceOf(got.get(r.c.tcgId), r.c.variant, fx) : { v: null, pid: null };
+    r.price = p.v;
+    r.est = !!p.est;
+    r.pid = p.pid ?? null;
   }
   shopReady = true;
   renderShop();
@@ -1571,13 +1585,14 @@ function renderShop(loading) {
     : (a, z) => a.order - z.order);
   const est = shopRows.reduce((n, r) => n + (r.price || 0) * r.qty, 0);
   const unpriced = shopRows.filter(r => r.price == null).reduce((n, r) => n + r.qty, 0);
+  const nEst = shopRows.filter(r => r.est).reduce((n, r) => n + r.qty, 0);
   sum.innerHTML = loading ? esc(loading)
-    : `<b>${total.toLocaleString()}</b> card${total === 1 ? '' : 's'} to get · about <b>${usd(est)}</b> at TCGplayer market${unpriced ? ` (${unpriced} without a price)` : ''}`;
+    : `<b>${total.toLocaleString()}</b> card${total === 1 ? '' : 's'} to get · about <b>${usd(est)}</b> at TCGplayer market${nEst ? ` (${nEst} priced from Cardmarket, converted to USD, marked ≈)` : ''}${unpriced ? ` (${unpriced} without a price)` : ''}`;
   list.innerHTML = rows.map(r => {
     const c = r.c;
     const link = r.pid ? `https://www.tcgplayer.com/product/${r.pid}` : tcgSearch(c);
     const fin = c.variant && c.variant !== 'normal' ? ` · ${esc(VL[c.variant] || c.variant)}` : '';
-    const price = !shopReady ? '…' : r.price != null ? `<b>${usd(r.price)}</b>${r.qty > 1 ? ` <span>× ${r.qty}</span>` : ''}` : '<span>no price</span>';
+    const price = !shopReady ? '…' : r.price != null ? `<b>${r.est ? '≈ ' : ''}${usd(r.price)}</b>${r.qty > 1 ? ` <span>× ${r.qty}</span>` : ''}` : '<span>no price</span>';
     return `<div class="shop-row"><div class="shop-main"><b>${esc(c.name)}</b>${r.qty > 1 && r.price == null ? ` × ${r.qty}` : ''}<span>${c.number ? '#' + esc(c.number) + ' · ' : ''}${esc(c.set || '')}${fin}</span></div>
       <div class="shop-price">${price}<a href="${link}" target="_blank" rel="noopener">${r.pid ? 'Buy' : 'Search'} ↗</a></div></div>`;
   }).join('');
@@ -2081,7 +2096,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.15';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.16';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
