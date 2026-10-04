@@ -111,7 +111,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .slot{aspect-ratio:2.5/3.5;border-radius:8px;position:relative;cursor:pointer;transition:transform .15s,box-shadow .15s}
 .slot-empty{background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:rgba(255,255,255,.2)}
 .slot-empty:hover{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.5);color:rgba(239,68,68,.7)}
-.slot-filled{overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+.slot-filled{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.5)}
 .slot-filled:hover{transform:translateY(-4px);box-shadow:0 8px 22px rgba(0,0,0,.45);z-index:2}
 .slot-filled img{width:100%;height:100%;object-fit:cover;display:block}
 .slot-need img{filter:grayscale(1) brightness(.8);opacity:.5}
@@ -230,6 +230,14 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .cfm-opt{display:block;font-size:.8rem;color:var(--muted);text-align:left;margin-bottom:6px}
 .cfm-opt b{color:var(--text)}
 #cfm-ok:disabled{opacity:.35;cursor:not-allowed}
+.ctx{position:fixed;z-index:200;min-width:200px;max-width:260px;background:var(--surf);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.65);padding:4px}
+.ctx .hd{font-size:.72rem;color:var(--muted);padding:7px 12px 5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ctx button{display:flex;align-items:center;gap:10px;width:100%;background:transparent;border:none;color:var(--text);padding:10px 12px;border-radius:7px;font-size:.88rem;text-align:left;cursor:pointer}
+.ctx button:hover,.ctx button:focus-visible{background:var(--surf2);outline:none}
+.ctx button.danger{color:#fca5a5}
+.ctx .ico{width:18px;text-align:center;flex-shrink:0}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:150;display:flex;align-items:center;gap:16px;background:var(--surf2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;box-shadow:0 10px 30px rgba(0,0,0,.6);font-size:.85rem;max-width:calc(100vw - 24px)}
+.toast button{background:none;border:none;color:#93c5fd;font-weight:700;font-size:.85rem;cursor:pointer;padding:2px 4px}
 .m-shop{max-width:560px}
 .shop-tools{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 0}
 .shop-tools label{font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:8px}
@@ -464,6 +472,9 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 
 
 <!-- ═══════════════════════ SETTINGS MODAL ══════════════════ -->
+<div class="ctx hidden" id="ctx" role="menu"></div>
+<div class="toast hidden" id="toast" role="status"><span id="toast-msg"></span><button id="toast-act"></button></div>
+
 <div class="overlay hidden" id="m-shop">
   <div class="modal m-shop">
     <h2>Shopping list</h2>
@@ -906,7 +917,7 @@ function renderFilled(c, idx, pos) {
   const imgHtml = c.imageSmall
     ? `<img src="${esc(c.imageSmall)}" alt="${esc(c.name)}" loading="lazy">`
     : `<div class="ph"><div class="ph-n">${esc(c.name)}</div><div class="ph-s">${esc(c.set||'')}</div></div>`;
-  return `<div class="slot slot-filled${vc}${need ? ' slot-need' : ''}" onclick="openDetail(${idx})">${imgHtml}${badge}${pos ? `<span class="pos">${pos}</span>` : ''}</div>`;
+  return `<div class="slot slot-filled${vc}${need ? ' slot-need' : ''}" data-idx="${idx}" onclick="openDetail(${idx})">${imgHtml}${badge}${pos ? `<span class="pos">${pos}</span>` : ''}</div>`;
 }
 
 /* ── Navigation ───────────────────────────────────────────── */
@@ -1084,6 +1095,7 @@ async function showPrice(c, idx) {
 function openDetail(idx) {
   const b = ab(); if (!b) return;
   const c = b.slots[idx];
+  if (Date.now() < noOpenUntil) return;
   if (!c) { openAdd(idx); return; }
   detIdx = idx;
   const list = viewList(b);
@@ -1109,14 +1121,90 @@ function openDetail(idx) {
     c.owned = c.owned === false ? true : false;
     save(); renderAll(); openDetail(idx);   // stay in the popup
   };
-  document.getElementById('det-rm').onclick = () => {
-    b.slots[idx] = null;
-    // Trim trailing nulls so slot count stays tidy
-    while (b.slots.length && !b.slots[b.slots.length - 1]) b.slots.pop();
-    save(); renderAll(); closeM('m-det');
-  };
+  document.getElementById('det-rm').onclick = () => { removeCard(idx); closeM('m-det'); };
   openM('m-det');
 }
+
+/* ── Quick actions: right-click (or long-press on a phone) a card ───────── */
+let noOpenUntil = 0;   // swallow the tap that ends a long-press
+const ctxEl = () => document.getElementById('ctx');
+
+function hideCtx() { ctxEl().classList.add('hidden'); }
+
+function openCtx(idx, x, y) {
+  const b = ab(); const c = b?.slots[idx]; if (!c) return;
+  const need = c.owned === false;
+  const el = ctxEl();
+  el.innerHTML = `<div class="hd">${esc(c.name)}${c.number ? ' #' + esc(c.number) : ''}</div>
+    <button data-a="own"><span class="ico">${need ? '✓' : '○'}</span>${need ? 'Mark as Owned' : 'Mark as Needed'}</button>
+    <button data-a="open"><span class="ico">🔍</span>Details…</button>
+    <button data-a="rm" class="danger"><span class="ico">✕</span>Remove Card</button>`;
+  el.onclick = e => {
+    const a = e.target.closest('button')?.dataset.a; if (!a) return;
+    hideCtx();
+    if (a === 'own')  { c.owned = need; save(); renderAll(); }   // need → owned (true), owned → need (false)
+    if (a === 'open') openDetail(idx);
+    if (a === 'rm')   removeCard(idx);
+  };
+  el.classList.remove('hidden');
+  const r = el.getBoundingClientRect();
+  el.style.left = Math.max(8, Math.min(x, innerWidth  - r.width  - 8)) + 'px';
+  el.style.top  = Math.max(8, Math.min(y, innerHeight - r.height - 8)) + 'px';
+  el.querySelector('button').focus({ preventScroll: true });
+}
+
+let toastT = null;
+function showToast(msg, actLabel, act) {
+  const t = document.getElementById('toast'), btn = document.getElementById('toast-act');
+  document.getElementById('toast-msg').textContent = msg;
+  btn.textContent = actLabel || ''; btn.classList.toggle('hidden', !actLabel);
+  btn.onclick = () => { t.classList.add('hidden'); act?.(); };
+  t.classList.remove('hidden');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => t.classList.add('hidden'), 7000);
+}
+
+/* Removing a card can be undone for a few seconds, from the popup or the quick menu */
+function removeCard(idx) {
+  const b = ab(); const card = b?.slots[idx]; if (!card) return;
+  b.slots[idx] = null;
+  while (b.slots.length && !b.slots[b.slots.length - 1]) b.slots.pop();   // keep the slot count tidy
+  save(); renderAll();
+  showToast(`Removed ${card.name}`, 'Undo', () => {
+    const bb = st.binders.find(x => x.id === b.id); if (!bb) return;
+    while (bb.slots.length <= idx) bb.slots.push(null);
+    if (bb.slots[idx]) { showToast('That slot has been filled since'); return; }
+    bb.slots[idx] = card; save(); renderAll();
+  });
+}
+
+(() => {
+  const cg = document.getElementById('cg');
+  cg.addEventListener('contextmenu', e => {
+    const el = e.target.closest('.slot-filled'); if (!el) return;
+    e.preventDefault();
+    openCtx(+el.dataset.idx, e.clientX, e.clientY);
+  });
+  // long-press for touch screens (iOS never sends a contextmenu event)
+  let t = null, x0 = 0, y0 = 0;
+  cg.addEventListener('touchstart', e => {
+    const el = e.target.closest('.slot-filled');
+    if (!el || e.touches.length !== 1) return;
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+    clearTimeout(t);
+    t = setTimeout(() => { noOpenUntil = Date.now() + 800; navigator.vibrate?.(15); openCtx(+el.dataset.idx, x0, y0); }, 480);
+  }, { passive: true });
+  cg.addEventListener('touchmove', e => {
+    const p = e.touches[0];
+    if (Math.hypot(p.clientX - x0, p.clientY - y0) > 10) clearTimeout(t);
+  }, { passive: true });
+  ['touchend', 'touchcancel'].forEach(ev => cg.addEventListener(ev, () => clearTimeout(t)));
+  // close on any press outside the menu, on scroll, resize or Escape
+  document.addEventListener('pointerdown', e => { if (!e.target.closest('#ctx')) hideCtx(); });
+  addEventListener('scroll', hideCtx, true);
+  addEventListener('resize', hideCtx);
+  addEventListener('blur', hideCtx);
+})();
 
 /* ── Binder value ─────────────────────────────────────────────
    Prices are only looked up when the button is pressed, a few at a time, so a large binder
@@ -1640,6 +1728,7 @@ document.querySelectorAll('.overlay').forEach(el => {
 });
 
 document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !ctxEl().classList.contains('hidden')) { hideCtx(); return; }
   if (e.key === 'Escape' && !document.getElementById('m-confirm').classList.contains('hidden')) { closeM('m-confirm'); return; }   // only the top dialog
   if (e.key === 'Escape') ['m-confirm','m-add','m-det','m-new','m-set','m-bulk','m-sync','m-val','m-shop'].forEach(closeM);
   if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && !document.querySelector('.overlay:not(.hidden)')) {
@@ -1678,7 +1767,7 @@ showInstall();
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.5';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.6';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
