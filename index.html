@@ -1196,6 +1196,13 @@ function tcgPrice(d, variant) {
   return null;
 }
 const usd = n => n == null ? '–' : `$${n.toFixed(2)}`;
+/* TCGdex sometimes has no TCGplayer prices for a card (e.g. promos) but still lists its TCGplayer product id */
+const FIN_TYPES = { reverse_holo: ['reverse', 'reverse-holo'], normal: ['normal'], holo: ['holo'] };
+function tcgProductId(d, variant) {
+  const vs = (d?.variants_detailed || []).filter(v => v.thirdParty?.tcgplayer);
+  const pick = vs.find(v => (FIN_TYPES[variant] || []).includes(v.type) && v.size === 'standard') || vs.find(v => v.size === 'standard') || vs[0];
+  return pick?.thirdParty.tcgplayer || null;
+}
 
 async function showPrice(c, idx) {
   const el = document.getElementById('det-price');
@@ -1208,7 +1215,13 @@ async function showPrice(c, idx) {
   const p = tcgPrice(d, c.variant);
   el.innerHTML = p
     ? `<b>${usd(p.marketPrice)}</b> market · low ${usd(p.lowPrice)}<br><a href="https://www.tcgplayer.com/product/${p.productId}" target="_blank" rel="noopener" title="TCGplayer price as of ${esc(String(p.updated || '').slice(0, 10))} (${esc(p.key)})">Buy on TCGplayer ↗</a>`
-    : `No TCGplayer price listed<br><a href="${search}" target="_blank" rel="noopener">Search TCGplayer ↗</a>`;
+    : (() => {
+      const cm = d?.pricing?.cardmarket, pid = tcgProductId(d, c.variant);
+      const eur = n => `€${n.toFixed(2)}`;
+      return `No TCGplayer price listed${cm?.trend != null ? `<br>Cardmarket trend <b>${eur(cm.trend)}</b>${cm.low != null ? ` · low ${eur(cm.low)}` : ''}` : ''}<br>`
+        + (pid ? `<a href="https://www.tcgplayer.com/product/${pid}" target="_blank" rel="noopener">View on TCGplayer ↗</a>`
+               : `<a href="${search}" target="_blank" rel="noopener">Search TCGplayer ↗</a>`);
+    })();
 }
 
 function openDetail(idx) {
@@ -2053,7 +2066,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.04.13';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.04.14';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
