@@ -137,6 +137,11 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 body.ro .b-add,body.ro .b-set,body.ro .b-new,body.ro .sect-add,body.ro #sync-btn,body.ro #install-btn,body.ro #binder-sel,body.ro #blist,body.ro .binder-ctrl .sect:first-child,body.ro #det-own,body.ro #det-rm,body.ro #rm-page,body.ro .b-share{display:none!important}
 body.ro .slot-empty{pointer-events:none}
 body.ro .b-rearr{display:none!important}
+.artrib{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:12px 4px 3px;background:linear-gradient(transparent,rgba(15,23,42,.93) 45%);color:#fff;font-size:.62rem;line-height:1.25;text-align:center;pointer-events:none}
+.artrib b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.artrib i{display:block;font-style:normal;font-size:.54rem;opacity:.85;white-space:nowrap}
+.has-rib .nbadge{bottom:auto;top:4px}
+.detimgw .artrib{font-size:.85rem;padding:22px 8px 8px}.detimgw .artrib i{font-size:.72rem}
 .lbadge{position:absolute;bottom:4px;left:4px;z-index:3;font-size:.5rem;font-weight:800;letter-spacing:.4px;padding:2px 4px;border-radius:3px;background:rgba(15,23,42,.85);color:#e2e8f0;pointer-events:none;line-height:1.2}
 select.lang-sel{flex:0 0 auto;width:auto;max-width:130px;cursor:pointer}
 /* Rearranging (drag a card onto another slot); off until the lock is opened */
@@ -455,7 +460,7 @@ body.ro .ro-note{display:block}
 <!-- ═══════════════════════ DETAIL MODAL ════════════════════ -->
 <div class="overlay hidden" id="m-det">
   <div class="modal m-det">
-    <div class="detimgw" id="det-wrap"><img class="detimg" id="det-img" src="" alt=""></div>
+    <div class="detimgw" id="det-wrap"><img class="detimg" id="det-img" src="" alt=""><div class="artrib hidden" id="det-rib"></div></div>
     <div class="detnav">
       <button class="nav-btn" id="det-prev" onclick="detStep(-1)" aria-label="Previous card">‹</button>
       <span class="pg-label" id="det-pos"></span>
@@ -466,6 +471,7 @@ body.ro .ro-note{display:block}
       <p id="det-meta"></p>
     </div>
     <div class="detvar" id="det-var"></div>
+    <p class="vnote" id="det-art"></p>
     <div class="detprice" id="det-price"></div>
     <div class="mfoot">
       <button class="btn btn-ghost" onclick="closeM('m-det')">Close</button>
@@ -869,8 +875,23 @@ const IMG_FALLBACK = {
   'cel25': 'cel25'
 };
 const setOfCard = c => c.setId || (c.tcgId || '').slice(0, (c.tcgId || '').lastIndexOf('-'));
+/* Stand-in art for Japanese sets TCGdex has no pictures for yet: the English release prints the same cards under
+   different numbers. Matched card by card (same illustrator, Pokemon, HP and card type; ambiguous ones are left out).
+   'ja:M1L' (Mega Brave) and 'ja:M1S' (Mega Symphonia) are both in the English set me01 (Mega Evolution).
+   Format: 'japanese number:english number;...'. Replaced by the real art automatically once TCGdex has it. */
+const ART_EN_SET = { 'ja:M1L': 'me/me01', 'ja:M1S': 'me/me01' };
+const ART_EN = Object.fromEntries(Object.entries({
+  'ja:M1L': '001:001;002:002;003:003;004:004;005:005;006:012;007:013;008:014;009:015;010:019;011:020;012:021;013:022;014:025;015:026;016:027;017:028;018:033;019:067;020:068;021:069;022:070;023:071;024:072;025:073;026:074;027:075;028:076;029:077;030:078;031:079;032:080;033:081;034:082;035:083;036:084;037:085;038:086;039:087;040:088;041:089;042:090;043:091;044:092;045:093;046:094;047:095;048:096;049:097;050:098;051:099;052:102;053:103;054:106;055:109;056:110;061:120;062:119;063:127;064:133;065:134;066:135;067:138;069:146;070:147;071:148;072:149;073:150;074:151;075:153;076:155;077:156;078:160;079:161;080:162;085:170;086:169;087:177;088:179;089:180;090:185;091:184;092:188',
+  'ja:M1S': '001:006;002:007;003:008;004:009;005:010;006:011;007:016;008:017;009:018;010:023;011:024;012:029;013:030;014:031;015:032;016:034;017:035;019:037;020:038;021:039;022:040;023:041;024:042;025:043;026:044;027:045;028:046;029:047;030:048;031:049;032:050;033:051;034:052;035:053;036:054;037:055;038:056;039:057;040:058;041:059;042:060;043:061;044:062;045:063;046:064;047:065;048:066;049:100;050:101;051:104;052:105;053:107;054:108;055:111;056:112;059:113;060:132;064:136;066:139;067:140;068:141;069:142;070:143;072:144;073:145;074:152;075:154;087:178;088:181;089:182;090:183;091:186;092:187',
+}).map(([k, v]) => [k, Object.fromEntries(v.split(';').map(x => x.split(':')))]));
 function fbImages(setId, num, lang) {
-  if (!num || (lang && lang !== 'en')) return {};   // the art fallbacks below are for English sets only
+  if (!num) return {};
+  if (lang && lang !== 'en') {
+    const k = `${lang}:${setId}`, en = ART_EN[k]?.[num];
+    if (!en) return {};
+    const base = `https://assets.tcgdex.net/en/${ART_EN_SET[k]}/${en}`;
+    return { small: `${base}/low.webp`, large: `${base}/high.webp`, borrowed: en };
+  }
   const n = encodeURIComponent(num);
   if (IMG_TCGDEX[setId]) {
     const base = `https://assets.tcgdex.net/en/${IMG_TCGDEX[setId]}/${n}`;
@@ -885,6 +906,10 @@ function cardImg(c, kind) {
   if (stored && !stored.includes('images.pokemontcg.io')) return stored;
   return fbImages(setOfCard(c), c.number, c.lang)[kind] || stored || '';
 }
+/* The English card number whose art stands in for this foreign card, or '' when it shows its own art */
+const borrowedEn = c => c.lang && c.lang !== 'en' && (!c.imageSmall || c.imageSmall.includes('assets.tcgdex.net/en/'))
+  ? fbImages(setOfCard(c), c.number, c.lang).borrowed || '' : '';
+const ribbon = (c, en) => `<b>${esc(c.name)}</b><i>${esc(setOfCard(c))} #${esc(c.number)} · EN art #${esc(en)}</i>`;
 /* a picture that fails to load becomes the name placeholder instead of a broken-image icon */
 function imgFail(el) {
   const d = document.createElement('div');
@@ -1089,7 +1114,8 @@ function renderFilled(c, idx, pos) {
   const imgHtml = src
     ? `<img src="${esc(src)}" alt="${esc(c.name)}" loading="lazy" onerror="imgFail(this)">`
     : `<div class="ph"><div class="ph-n">${esc(c.name)}</div><div class="ph-s">${esc(c.set||'')}</div></div>`;
-  return `<div class="slot slot-filled${vc}${need ? ' slot-need' : ''}" data-idx="${idx}" onclick="openDetail(${idx})">${imgHtml}${badge}${pos ? `<span class="pos">${pos}</span>` : ''}${LANG_TAG[c.lang] ? `<span class="lbadge">${LANG_TAG[c.lang]}</span>` : ''}</div>`;
+  const be = borrowedEn(c);
+  return `<div class="slot slot-filled${vc}${need ? ' slot-need' : ''}${be ? ' has-rib' : ''}" data-idx="${idx}" onclick="openDetail(${idx})">${imgHtml}${badge}${pos ? `<span class="pos">${pos}</span>` : ''}${be ? `<span class="artrib">${ribbon(c, be)}</span>` : LANG_TAG[c.lang] ? `<span class="lbadge">${LANG_TAG[c.lang]}</span>` : ''}</div>`;
 }
 
 /* ── Navigation ───────────────────────────────────────────── */
@@ -1185,7 +1211,7 @@ function renderResults() {
       ${img ? `<img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy">`
              : `<div class="ph"><div class="ph-n">${esc(c.name)}</div></div>`}
       ${vb}
-      <div class="rcset">${esc(sn)} ${num}</div>
+      <div class="rcset">${esc(sn)} ${num}${c.images?.borrowed ? ` · EN art #${esc(c.images.borrowed)}` : ''}</div>
     </div>`;
   }).join('');
 }
@@ -1350,6 +1376,9 @@ function openDetail(idx) {
   const need = c.owned === false;
   document.getElementById('det-wrap').className =
     'detimgw' + (need ? ' need' : c.variant && c.variant !== 'normal' ? ` v-${c.variant}` : '');
+  const be = borrowedEn(c), rib = document.getElementById('det-rib');
+  rib.innerHTML = be ? ribbon(c, be) : ''; rib.classList.toggle('hidden', !be);
+  document.getElementById('det-art').textContent = be ? `The real ${LANG_NAME[c.lang]} picture isn't on TCGdex yet, so the English version's art (card #${be}) is shown. Name, number and set above are for your card.` : '';
   document.getElementById('det-name').textContent = c.name;
   document.getElementById('det-meta').textContent =
     [c.set, c.number ? `#${c.number}` : '', c.rarity, LANG_NAME[c.lang] && c.lang !== 'en' ? LANG_NAME[c.lang] : ''].filter(Boolean).join(' · ');
@@ -1991,7 +2020,7 @@ function renderBulkGrid() {
       ${img
         ? `<img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy">`
         : `<div class="bcard-ph">${esc(c.name)}</div>`}
-      <div class="bcard-nm">${num} ${esc(c.name)}</div>
+      <div class="bcard-nm">${num} ${esc(c.name)}${c.images?.borrowed ? ' · EN art' : ''}</div>
     </div>`;
   }).join('');
   document.getElementById('bcg').classList.toggle('hidden', !bulkVisible.length);
@@ -2192,7 +2221,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.10.1';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.10.2';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
@@ -2379,6 +2408,36 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && sync.token && Date.now() - syncLast > 30000) syncNow();
 });
 
+/* Cards showing English stand-in art: once a day, check whether TCGdex has the real picture and switch to it */
+async function upgradeArt() {
+  if (RO) return;
+  const sets = new Map();
+  for (const b of st.binders) for (const c of b.slots) if (c && borrowedEn(c)) {
+    const k = `${c.lang}:${setOfCard(c)}`;
+    if (!sets.has(k)) sets.set(k, []);
+    sets.get(k).push(c);
+  }
+  if (!sets.size) return;
+  let last = {};
+  try { last = JSON.parse(localStorage.getItem('pkArtChk1') || '{}'); } catch {}
+  let changed = false;
+  for (const [k, cards] of sets) {
+    if (Date.now() - (last[k] || 0) < 24 * 60 * 60 * 1000) continue;
+    const i = k.indexOf(':');
+    try {
+      const d = await apiJson(`${apiBase(k.slice(0, i))}/sets/${encodeURIComponent(k.slice(i + 1))}`);
+      const img = new Map((d.cards || []).filter(x => x.image).map(x => [x.localId, x.image]));
+      for (const c of cards) {
+        const u = img.get(c.number);
+        if (u) { c.imageSmall = `${u}/low.webp`; c.imageLarge = `${u}/high.webp`; changed = true; }
+      }
+      last[k] = Date.now();
+    } catch {}
+  }
+  try { localStorage.setItem('pkArtChk1', JSON.stringify(last)); } catch {}
+  if (changed) { save(); renderAll(); }
+}
+
 /* ── Util ─────────────────────────────────────────────────── */
 function esc(s) {
   return String(s)
@@ -2396,6 +2455,7 @@ else {
   navigator.storage?.persist?.();   // ask the browser not to evict saved binders under storage pressure
   loadSets();   // background — fetches & caches all set names for autocomplete
   renderAll();
+  upgradeArt();
 }
 </script>
 </body>
