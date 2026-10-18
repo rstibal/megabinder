@@ -143,7 +143,8 @@ body.ro .b-rearr{display:none!important}
 .has-rib .nbadge{bottom:auto;top:4px}
 .detimgw .artrib{font-size:.85rem;padding:22px 8px 8px}.detimgw .artrib i{font-size:.72rem}
 .lbadge{position:absolute;bottom:4px;left:4px;z-index:3;font-size:.5rem;font-weight:800;letter-spacing:.4px;padding:2px 4px;border-radius:3px;background:rgba(15,23,42,.85);color:#e2e8f0;pointer-events:none;line-height:1.2}
-select.lang-sel{flex:0 0 auto;width:auto;max-width:130px;cursor:pointer}
+.s-row select.lang-sel,.bulk-top select.lang-sel{flex:0 0 auto;width:auto;max-width:170px;cursor:pointer}
+@media (max-width:520px){.s-row,.bulk-top{flex-wrap:wrap}.s-row select.lang-sel,.bulk-top select.lang-sel{flex:1 0 100%;max-width:none}.s-row .fi,.bulk-top .acw{min-width:0}}
 /* Rearranging (drag a card onto another slot); off until the lock is opened */
 .b-rearr.on{background:rgba(250,204,21,.14)!important;border-color:#facc15!important;color:#fde68a!important}
 body.rearr .slot-filled{cursor:grab;touch-action:none;box-shadow:0 0 0 1px rgba(250,204,21,.55),0 2px 8px rgba(0,0,0,.5)}
@@ -211,6 +212,7 @@ body.ro .ro-note{display:block}
 .rc img{width:100%;height:100%;object-fit:cover}
 .rcv{position:absolute;top:4px;right:4px;z-index:2;font-size:.5rem;font-weight:800;line-height:1;padding:3px 4px;border-radius:4px;background:#6366f1;color:#fff;white-space:nowrap}
 .rcv-holo{background:#d97706}.rcv-full_art{background:#059669}.rcv-gold{background:#b45309}.rcv-rainbow{background:#a855f7}
+.rcset b{display:block;font-size:.5rem;color:#fff}
 .rcset{position:absolute;bottom:0;left:0;right:0;font-size:.43rem;background:rgba(0,0,0,.78);color:rgba(255,255,255,.9);padding:2px 3px;text-align:center;line-height:1.3}
 .selaera{display:flex;gap:14px;background:var(--surf2);border-radius:10px;padding:14px;margin-bottom:14px}
 .selaera.hidden{display:none}
@@ -431,8 +433,8 @@ body.ro .ro-note{display:block}
     <div class="s-row">
       <select class="fi lang-sel" id="add-lang" onchange="onLangChange()" aria-label="Card language">
         <option value="en">English</option>
-        <option value="ja">日本語</option>
-        <option value="zh-tw">繁體中文</option>
+        <option value="ja">Japanese (日本語)</option>
+        <option value="zh-tw">Chinese (繁體中文)</option>
       </select>
       <input class="fi" id="name-in" placeholder="Search card name…" oninput="onNameInput()" autocomplete="off">
       <div class="acw">
@@ -468,6 +470,7 @@ body.ro .ro-note{display:block}
     </div>
     <div class="detinfo">
       <h3 id="det-name"></h3>
+      <p id="det-en" class="hidden"></p>
       <p id="det-meta"></p>
     </div>
     <div class="detvar" id="det-var"></div>
@@ -633,8 +636,8 @@ body.ro .ro-note{display:block}
     <div class="bulk-top">
       <select class="fi lang-sel" id="bulk-lang" onchange="onBulkLang()" aria-label="Card language">
         <option value="en">English</option>
-        <option value="ja">日本語</option>
-        <option value="zh-tw">繁體中文</option>
+        <option value="ja">Japanese (日本語)</option>
+        <option value="zh-tw">Chinese (繁體中文)</option>
       </select>
       <div class="acw">
         <input class="fi" id="bulk-set-in" placeholder="Search for a set…" oninput="onBulkSetInput()" autocomplete="off">
@@ -746,7 +749,7 @@ function matchCard(c) {
   if (ff === 'need'  && c.owned !== false) return false;
   const q = fq.trim().toLowerCase().replace(/#/g, '');
   if (!q) return true;
-  const hay = [c.name, c.set, c.rarity, c.variant && c.variant !== 'normal' ? (VL[c.variant] || c.variant) : ''].join(' ').toLowerCase();
+  const hay = [c.name, enOf(c), c.set, enSetOf(c), c.rarity, c.variant && c.variant !== 'normal' ? (VL[c.variant] || c.variant) : ''].join(' ').toLowerCase();
   const num = String(c.number || '').toLowerCase().replace(/^0+(?=\d)/, '');
   return q.split(/\s+/).every(w => /^\d+$/.test(w) ? num === w.replace(/^0+(?=\d)/, '') : hay.includes(w) || num === w);
 }
@@ -901,6 +904,17 @@ function gapSearch(text, setId) {
   }
   return out.slice(0, 60);
 }
+/* jp-en.json (same build script): English set and card names for Japanese sets, shown next to the Japanese ones */
+let jpEn = null, jpEnP = null;
+const loadEn = () => jpEnP || (jpEnP = fetch('jp-en.json').then(r => r.ok ? r.json() : null).then(d => (jpEn = d)).catch(() => null));
+const setIdOf = c => c.setId || c.set?.id || setOfCard(c);
+const enSet = (lang, setId) => lang === 'ja' ? jpEn?.sets?.[setId]?.n || '' : '';
+const enOf = c => {   // English card name, when it differs from the card's own name
+  const e = c.lang === 'ja' ? jpEn?.sets?.[setIdOf(c)]?.c?.[c.number] || '' : '';
+  return e && e.toLowerCase() !== String(c.name).toLowerCase() ? e : '';
+};
+const enSetOf = c => enSet(c.lang, setIdOf(c));
+const withEn = (name, en) => en ? `${name} (${en})` : name;
 /* result entries for a card: its normal printing and, if it has one, a reverse holo */
 function entriesOf(c) {
   const out = [];
@@ -1158,9 +1172,10 @@ function renderFilled(c, idx, pos) {
     : c.variant && c.variant !== 'normal'
       ? `<span class="vbadge vb-${c.variant}">${VL[c.variant] || c.variant}</span>` : '';
   const src = cardImg(c, 'small');   // also repairs cards saved before the fallback existed
+  const en = enOf(c);
   const imgHtml = src
-    ? `<img src="${esc(src)}" alt="${esc(c.name)}" loading="lazy" onerror="imgFail(this)">`
-    : `<div class="ph"><div class="ph-n">${esc(c.name)}</div><div class="ph-s">${esc(c.set||'')}</div></div>`;
+    ? `<img src="${esc(src)}" alt="${esc(withEn(c.name, en))}" loading="lazy" onerror="imgFail(this)">`
+    : `<div class="ph"><div class="ph-n">${esc(c.name)}</div>${en ? `<div class="ph-s">${esc(en)}</div>` : ''}<div class="ph-s">${esc(c.set||'')}</div></div>`;
   const be = borrowedEn(c);
   return `<div class="slot slot-filled${vc}${need ? ' slot-need' : ''}${be ? ' has-rib' : ''}" data-idx="${idx}" onclick="openDetail(${idx})">${imgHtml}${badge}${pos ? `<span class="pos">${pos}</span>` : ''}${be ? `<span class="artrib">${ribbon(c, be)}</span>` : LANG_TAG[c.lang] ? `<span class="lbadge">${LANG_TAG[c.lang]}</span>` : ''}</div>`;
 }
@@ -1179,8 +1194,10 @@ function switchBinder(id) {
 /* ── Add Card modal ───────────────────────────────────────── */
 const addLang = () => document.getElementById('add-lang').value;
 function addHint() {
-  return addLang() === 'en' ? 'Type a card name above, or pick a set to browse its cards.'
-    : 'Search by name in that language, by set code + number (e.g. SV2a 006), or pick a set to browse its cards.';
+  const l = addLang();
+  return l === 'en' ? 'Type a card name above, or pick a set to browse its cards.'
+    : l === 'ja' ? 'Search by Japanese name, by set code + number (e.g. SV2a 006), or pick a set to browse its cards (then English names work too).'
+    : 'Search by Chinese name, by set code + number (e.g. SV2a 006), or pick a set to browse its cards.';
 }
 async function onLangChange() {
   const l = addLang();
@@ -1238,6 +1255,11 @@ async function doSearch(name) {
       const set = m ? sets.find(s => s.id.toLowerCase() === m[1].toLowerCase()) : /^#?\d{1,4}$/.test(name) ? ms : null;
       if (set) found = await apiByCode(lang, set, (m ? m[2] : name).replace('#', ''));
     }
+    if (!found && lang !== 'en' && ms) {   // inside a chosen set: match the native or the English name
+      const q = name.toLowerCase();
+      const hits = (await fetchSetCards(ms.id, lang)).filter(c => c.name.toLowerCase().includes(q) || enOf(c).toLowerCase().includes(q));
+      found = hits.slice(0, 60).flatMap(c => entriesOf(c).map(e => ({ ...e, browse: true })));
+    }
     if (!found) found = await apiSearch(name, ms?.id || '', lang);
     if (seq !== searchSeq) return;   // a newer search superseded this one
     results = found;
@@ -1254,7 +1276,7 @@ function findSet(text, lang) {
   const t = String(text || '').trim().toLowerCase();
   if (!t) return null;
   const sets = setsFor(lang);
-  return sets.find(s => s.name.toLowerCase() === t) || sets.find(s => s.id.toLowerCase() === t) || null;
+  return sets.find(s => s.name.toLowerCase() === t) || sets.find(s => s.id.toLowerCase() === t) || sets.find(s => enSet(lang, s.id).toLowerCase() === t) || null;
 }
 
 /* No card name entered: list every card of the chosen set to pick from */
@@ -1264,15 +1286,15 @@ async function browseSet(set) {
   document.getElementById('sel-area').classList.add('hidden');
   document.getElementById('add-ok').disabled = true;
   document.getElementById('rg').innerHTML = '';
-  document.getElementById('status').innerHTML = `<span class="spin"></span>Loading ${esc(set.name)}…`;
+  document.getElementById('status').innerHTML = `<span class="spin"></span>Loading ${esc(withEn(set.name, enSet(lang, set.id)))}…`;
   try {
     const cards = await fetchSetCards(set.id, lang);
     if (seq !== searchSeq) return;
     results = [];
-    if (!cards.length) { document.getElementById('status').textContent = `TCGdex lists ${set.name} (${set.id}) but has no card data for it yet, so its cards can't be added here. Try again later.`; return; }
+    if (!cards.length) { document.getElementById('status').textContent = `TCGdex lists ${withEn(set.name, enSet(lang, set.id))} (${set.id}) but has no card data for it yet, so its cards can't be added here. Try again later.`; return; }
     for (const c of cards) for (const e of entriesOf(c)) results.push({ ...e, browse: true });
     renderResults();
-    document.getElementById('status').textContent = `${set.name} (${set.id}): ${results.length} card${results.length === 1 ? '' : 's'}, click one to select`;
+    document.getElementById('status').textContent = `${withEn(set.name, enSet(lang, set.id))} (${set.id}): ${results.length} card${results.length === 1 ? '' : 's'}, click one to select`;
   } catch (e) {
     if (seq !== searchSeq) return;
     document.getElementById('status').textContent = `Couldn't load that set: ${e.message}`;
@@ -1282,7 +1304,11 @@ async function browseSet(set) {
 function renderResults() {
   const stat = document.getElementById('status');
   const rg   = document.getElementById('rg');
-  if (!results.length) { stat.textContent = 'No cards found.'; rg.innerHTML = ''; return; }
+  if (!results.length) {
+    const q = document.getElementById('name-in').value.trim(), l = addLang();
+    const hint = l === 'ja' && q && /^[\x20-\x7e]+$/.test(q) && !document.getElementById('set-in').value.trim() ? ' To search by English name, pick the set in "Filter by set" first.' : '';
+    stat.textContent = 'No cards found.' + hint; rg.innerHTML = ''; return;
+  }
   stat.textContent = `${results.length} result${results.length > 1 ? 's' : ''} — click to select`;
   rg.innerHTML = results.map((c, i) => {
     const img = c.images?.small || '';
@@ -1293,7 +1319,7 @@ function renderResults() {
       ${img ? `<img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy">`
              : `<div class="ph"><div class="ph-n">${esc(c.name)}</div></div>`}
       ${vb}
-      <div class="rcset">${esc(sn)} ${num}${c.images?.borrowed ? ` · EN art #${esc(c.images.borrowed)}` : ''}</div>
+      <div class="rcset">${enOf(c) ? `<b>${esc(enOf(c))}</b>` : ''}${esc(sn)} ${num}${c.images?.borrowed ? ` · EN art #${esc(c.images.borrowed)}` : ''}</div>
     </div>`;
   }).join('');
 }
@@ -1301,7 +1327,7 @@ function renderResults() {
 function showSel() {
   const c = selCard; if (!c) return;
   document.getElementById('sel-meta').textContent =
-    [c.set?.name, c.number ? `#${c.number}` : '', c.rarity, c.variant !== 'normal' ? `✦ ${VL[c.variant]}` : '']
+    [withEn(c.set?.name || '', enSetOf(c)), c.number ? `#${c.number}` : '', c.rarity, c.variant !== 'normal' ? `✦ ${VL[c.variant]}` : '']
       .filter(Boolean).join(' · ');
 }
 function pickResult(i) {
@@ -1309,7 +1335,7 @@ function pickResult(i) {
   document.querySelectorAll('.rc').forEach((el, j) => el.classList.toggle('sel', j === i));
   const c = selCard;
   document.getElementById('sel-img').src  = c.images?.large || c.images?.small || '';
-  document.getElementById('sel-name').textContent = c.name;
+  document.getElementById('sel-name').textContent = withEn(c.name, enOf(c));
   showSel();
   document.getElementById('sel-area').classList.remove('hidden');
   document.getElementById('add-ok').disabled = false;
@@ -1338,11 +1364,11 @@ function showSetDrop() {
   const dd = document.getElementById('set-drop');
   const l = addLang(), sets = setsFor(l);
   if (!v || !sets.length) { dd.classList.add('hidden'); return; }
-  setMatches = sets.filter(s => s.name.toLowerCase().includes(v) || s.id.toLowerCase().includes(v)).slice(0, 22);
+  setMatches = sets.filter(s => s.name.toLowerCase().includes(v) || s.id.toLowerCase().includes(v) || enSet(l, s.id).toLowerCase().includes(v)).slice(0, 22);
   if (!setMatches.length) { dd.classList.add('hidden'); return; }
   dd.innerHTML = setMatches.map((s, i) =>
     `<div class="acitem" onclick="pickSet(${i})">
-      <span>${esc(s.name)} <span style="color:var(--muted);font-size:.75em">${esc(s.id)}</span></span>
+      <span>${esc(withEn(s.name, enSet(l, s.id)))} <span style="color:var(--muted);font-size:.75em">${esc(s.id)}</span></span>
     </div>`
   ).join('');
   dd.classList.remove('hidden');
@@ -1350,7 +1376,7 @@ function showSetDrop() {
 
 function pickSet(i) {
   const s = setMatches[i];
-  document.getElementById('set-in').value = s.name;
+  document.getElementById('set-in').value = enSet(addLang(), s.id) || s.name;
   document.getElementById('set-drop').classList.add('hidden');
   const n = document.getElementById('name-in').value.trim();
   if (n) doSearch(n); else browseSet(s);
@@ -1481,8 +1507,10 @@ function openDetail(idx) {
   rib.innerHTML = be ? ribbon(c, be) : ''; rib.classList.toggle('hidden', !be);
   document.getElementById('det-art').textContent = c.gap && gapOf(c)?.empty ? `TCGdex has no data for this set yet, so this card's English name, rarity and picture come from TCGplayer's catalog.` : be ? `The real ${LANG_NAME[c.lang]} picture isn't on TCGdex yet, so the English version's art (card #${be}) is shown. Name, number and set above are for your card.` : '';
   document.getElementById('det-name').textContent = c.name;
+  const den = document.getElementById('det-en'), enn = enOf(c);
+  den.textContent = enn; den.classList.toggle('hidden', !enn);
   document.getElementById('det-meta').textContent =
-    [c.set, c.number ? `#${c.number}` : '', c.rarity, LANG_NAME[c.lang] && c.lang !== 'en' ? LANG_NAME[c.lang] : ''].filter(Boolean).join(' · ');
+    [withEn(c.set || '', enSetOf(c)), c.number ? `#${c.number}` : '', c.rarity, LANG_NAME[c.lang] && c.lang !== 'en' ? LANG_NAME[c.lang] : ''].filter(Boolean).join(' · ');
   document.getElementById('det-var').textContent =
     c.variant && c.variant !== 'normal' ? `✦ ${VL[c.variant] || c.variant}` : '';
   showPrice(c, idx);
@@ -1739,7 +1767,7 @@ async function openValue() {
   }
   priced.sort((a, z) => z.v - a.v);
   const top = priced.slice(0, 5).map(({ c, v, isNeed, est }) =>
-    `<div class="vrow${isNeed ? ' need' : ''}"><span>${esc(c.name)} ${c.number ? '#' + esc(c.number) : ''}${c.variant && c.variant !== 'normal' ? ' · ' + esc(VL[c.variant] || c.variant) : ''}${isNeed ? ' (need)' : ''}</span><b>${est ? '≈ ' : ''}${usd(v)}</b></div>`).join('');
+    `<div class="vrow${isNeed ? ' need' : ''}"><span>${esc(withEn(c.name, enOf(c)))} ${c.number ? '#' + esc(c.number) : ''}${c.variant && c.variant !== 'normal' ? ' · ' + esc(VL[c.variant] || c.variant) : ''}${isNeed ? ' (need)' : ''}</span><b>${est ? '≈ ' : ''}${usd(v)}</b></div>`).join('');
   body.innerHTML = `
     <div class="vtot">
       <span>Collected (${nOwn} card${nOwn === 1 ? '' : 's'})</span><b>${usd(own)}</b>
@@ -1811,13 +1839,13 @@ function renderShop(loading) {
     const link = r.pid ? `https://www.tcgplayer.com/product/${r.pid}` : tcgSearch(c);
     const fin = c.variant && c.variant !== 'normal' ? ` · ${esc(VL[c.variant] || c.variant)}` : '';
     const price = !shopReady ? '…' : r.price != null ? `<b>${r.est ? '≈ ' : ''}${usd(r.price)}</b>${r.qty > 1 ? ` <span>× ${r.qty}</span>` : ''}` : '<span>no price</span>';
-    return `<div class="shop-row"><div class="shop-main"><b>${esc(c.name)}</b>${r.qty > 1 && r.price == null ? ` × ${r.qty}` : ''}<span>${c.number ? '#' + esc(c.number) + ' · ' : ''}${esc(c.set || '')}${fin}</span></div>
+    return `<div class="shop-row"><div class="shop-main"><b>${esc(c.name)}</b>${r.qty > 1 && r.price == null ? ` × ${r.qty}` : ''}<span>${enOf(c) ? esc(enOf(c)) + ' · ' : ''}${c.number ? '#' + esc(c.number) + ' · ' : ''}${esc(c.set || '')}${fin}</span></div>
       <div class="shop-price">${price}${r.pid || !c.lang || c.lang === 'en' ? `<a href="${link}" target="_blank" rel="noopener">${r.pid ? 'Buy' : 'Search'} ↗</a>` : ''}</div></div>`;
   }).join('');
 }
 
 async function copyShop() {
-  const text = shopRows.map(r => `${r.qty} ${r.c.name} (${[r.c.set, r.c.number ? '#' + r.c.number : '', r.c.variant && r.c.variant !== 'normal' ? VL[r.c.variant] || r.c.variant : ''].filter(Boolean).join(', ')})`).join('\n');
+  const text = shopRows.map(r => `${r.qty} ${withEn(r.c.name, enOf(r.c))} (${[r.c.set, r.c.number ? '#' + r.c.number : '', r.c.variant && r.c.variant !== 'normal' ? VL[r.c.variant] || r.c.variant : ''].filter(Boolean).join(', ')})`).join('\n');
   const btn = document.getElementById('shop-copy');
   try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied ✓'; }
   catch { btn.textContent = 'Copy failed'; }
@@ -1979,11 +2007,11 @@ function showBulkSetDrop() {
   const dd = document.getElementById('bulk-set-drop');
   const l = bulkLang(), sets = setsFor(l);
   if (!v || !sets.length) { dd.classList.add('hidden'); return; }
-  bulkSetMatches = sets.filter(s => s.name.toLowerCase().includes(v) || (l === 'en' ? s.id.toLowerCase() === v : s.id.toLowerCase().includes(v))).slice(0, 22);
+  bulkSetMatches = sets.filter(s => s.name.toLowerCase().includes(v) || (l === 'en' ? s.id.toLowerCase() === v : s.id.toLowerCase().includes(v) || enSet(l, s.id).toLowerCase().includes(v))).slice(0, 22);
   if (!bulkSetMatches.length) { dd.classList.add('hidden'); return; }
   dd.innerHTML = bulkSetMatches.map((s, i) =>
     `<div class="acitem" onclick="pickBulkSet(${i})">
-      <span>${esc(s.name)} <span style="color:var(--muted);font-size:.75em">${esc(s.id)}</span></span>
+      <span>${esc(withEn(s.name, enSet(l, s.id)))} <span style="color:var(--muted);font-size:.75em">${esc(s.id)}</span></span>
     </div>`
   ).join('');
   dd.classList.remove('hidden');
@@ -1991,7 +2019,7 @@ function showBulkSetDrop() {
 
 function pickBulkSet(i) {
   const s = bulkSetMatches[i];
-  document.getElementById('bulk-set-in').value = s.name;
+  document.getElementById('bulk-set-in').value = enSet(bulkLang(), s.id) || s.name;
   document.getElementById('bulk-set-drop').classList.add('hidden');
   loadBulkCards(s.id);
 }
@@ -2129,7 +2157,7 @@ function renderBulkGrid() {
       ${img
         ? `<img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy">`
         : `<div class="bcard-ph">${esc(c.name)}</div>`}
-      <div class="bcard-nm">${num} ${esc(c.name)}${c.images?.borrowed ? ' · EN art' : ''}</div>
+      <div class="bcard-nm" title="${esc(c.name)}">${num} ${esc(enOf(c) || c.name)}${c.images?.borrowed ? ' · EN art' : ''}</div>
     </div>`;
   }).join('');
   document.getElementById('bcg').classList.toggle('hidden', !bulkVisible.length);
@@ -2320,7 +2348,7 @@ async function initShared() {
     st = { binders: [b], activeId: b.id };
     document.title = `${b.name} · MegaBinder`;
     renderAll();
-    loadGap().then(() => renderAll());
+    Promise.all([loadGap(), loadEn()]).then(() => renderAll());
   } catch {
     const e = document.getElementById('empty-msg');
     e.querySelector('h2').textContent = "This link couldn't be read";
@@ -2332,7 +2360,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.18.3';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.18.5';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
@@ -2568,7 +2596,7 @@ else {
   navigator.storage?.persist?.();   // ask the browser not to evict saved binders under storage pressure
   loadSets();   // background — fetches & caches all set names for autocomplete
   renderAll();
-  loadGap().then(() => { renderAll(); upgradeArt(); });
+  Promise.all([loadGap(), loadEn()]).then(() => { renderAll(); upgradeArt(); });
 }
 </script>
 </body>
