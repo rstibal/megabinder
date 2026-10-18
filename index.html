@@ -907,10 +907,14 @@ function gapSearch(text, setId) {
 /* jp-en.json (same build script): English set and card names for Japanese sets, shown next to the Japanese ones */
 let jpEn = null, jpEnP = null;
 const loadEn = () => jpEnP || (jpEnP = fetch('jp-en.json').then(r => r.ok ? r.json() : null).then(d => (jpEn = d)).catch(() => null));
+/* zh-en.json (tools/build_zh_en.py): a plain Chinese name -> English name dictionary, plus English names for the sets that
+   share a code with a Japanese set */
+let zhEn = null, zhEnP = null;
+const loadEnZh = () => zhEnP || (zhEnP = fetch('zh-en.json').then(r => r.ok ? r.json() : null).then(d => (zhEn = d)).catch(() => null));
 const setIdOf = c => c.setId || c.set?.id || setOfCard(c);
-const enSet = (lang, setId) => lang === 'ja' ? jpEn?.sets?.[setId]?.n || '' : '';
+const enSet = (lang, setId) => lang === 'ja' ? jpEn?.sets?.[setId]?.n || '' : lang === 'zh-tw' ? zhEn?.sets?.[setId] || '' : '';
 const enOf = c => {   // English card name, when it differs from the card's own name
-  const e = c.lang === 'ja' ? jpEn?.sets?.[setIdOf(c)]?.c?.[c.number] || '' : '';
+  const e = c.lang === 'ja' ? jpEn?.sets?.[setIdOf(c)]?.c?.[c.number] || '' : c.lang === 'zh-tw' ? zhEn?.names?.[c.name] || '' : '';
   return e && e.toLowerCase() !== String(c.name).toLowerCase() ? e : '';
 };
 const enSetOf = c => enSet(c.lang, setIdOf(c));
@@ -1197,7 +1201,7 @@ function addHint() {
   const l = addLang();
   return l === 'en' ? 'Type a card name above, or pick a set to browse its cards.'
     : l === 'ja' ? 'Search by Japanese name, by set code + number (e.g. SV2a 006), or pick a set to browse its cards (then English names work too).'
-    : 'Search by Chinese name, by set code + number (e.g. SV2a 006), or pick a set to browse its cards.';
+    : 'Search by Chinese name, by set code + number (e.g. SV2a 006), or pick a set to browse its cards (then English names work too).';
 }
 async function onLangChange() {
   const l = addLang();
@@ -1306,7 +1310,7 @@ function renderResults() {
   const rg   = document.getElementById('rg');
   if (!results.length) {
     const q = document.getElementById('name-in').value.trim(), l = addLang();
-    const hint = l === 'ja' && q && /^[\x20-\x7e]+$/.test(q) && !document.getElementById('set-in').value.trim() ? ' To search by English name, pick the set in "Filter by set" first.' : '';
+    const hint = l !== 'en' && q && /^[\x20-\x7e]+$/.test(q) && !document.getElementById('set-in').value.trim() ? ' To search by English name, pick the set in "Filter by set" first.' : '';
     stat.textContent = 'No cards found.' + hint; rg.innerHTML = ''; return;
   }
   stat.textContent = `${results.length} result${results.length > 1 ? 's' : ''} — click to select`;
@@ -2348,7 +2352,7 @@ async function initShared() {
     st = { binders: [b], activeId: b.id };
     document.title = `${b.name} · MegaBinder`;
     renderAll();
-    Promise.all([loadGap(), loadEn()]).then(() => renderAll());
+    Promise.all([loadGap(), loadEn(), loadEnZh()]).then(() => renderAll());
   } catch {
     const e = document.getElementById('empty-msg');
     e.querySelector('h2').textContent = "This link couldn't be read";
@@ -2360,7 +2364,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.18.5';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.18.6';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
@@ -2596,7 +2600,7 @@ else {
   navigator.storage?.persist?.();   // ask the browser not to evict saved binders under storage pressure
   loadSets();   // background — fetches & caches all set names for autocomplete
   renderAll();
-  Promise.all([loadGap(), loadEn()]).then(() => { renderAll(); upgradeArt(); });
+  Promise.all([loadGap(), loadEn(), loadEnZh()]).then(() => { renderAll(); upgradeArt(); });
 }
 </script>
 </body>
