@@ -875,6 +875,40 @@ const IMG_FALLBACK = {
   'cel25': 'cel25'
 };
 const setOfCard = c => c.setId || (c.tcgId || '').slice(0, (c.tcgId || '').lastIndexOf('-'));
+/* jp-gap.json (built by tools/build_jp_gap.py from TCGCSV, i.e. TCGplayer's Japanese catalog): Japanese sets TCGdex
+   has no cards for ('empty': name, rarity and a saved price come from here) or no pictures for (real card scans). */
+let jpGap = null, jpGapP = null;
+const loadGap = () => jpGapP || (jpGapP = fetch('jp-gap.json').then(r => r.ok ? r.json() : null).then(d => (jpGap = d)).catch(() => null));
+const gapSet = (lang, setId) => lang === 'ja' ? jpGap?.sets?.[setId] || null : null;
+function gapRow(lang, setId, num) {
+  const g = gapSet(lang, setId); if (!g) return null;
+  if (!g.m) g.m = new Map(g.c.map(r => [r[1], r]));
+  return g.m.get(num) || null;
+}
+const gapImg = pid => ({ small: `https://tcgplayer-cdn.tcgplayer.com/product/${pid}_200w.jpg`, large: `https://product-images.tcgplayer.com/fit-in/437x610/${pid}.jpg` });
+/* the saved TCGplayer product + price for a card in a set TCGdex lacks */
+const gapOf = c => { const r = c.lang === 'ja' ? gapRow('ja', setOfCard(c), c.number) : null; return r ? { pid: r[0], price: r[4] ?? null, empty: !!gapSet('ja', setOfCard(c)).empty } : null; };
+function gapCard(setId, g, r) {
+  return { lang: 'ja', id: `${setId}-${r[1]}`, name: r[2] || r[1], number: r[1], rarity: r[3] || '', images: { ...gapImg(r[0]), gap: true },
+    set: { id: setId, name: g.name }, v: { n: true, r: false, h: false }, gap: true };
+}
+/* every card of the empty gap sets (optionally one set) whose name contains the text */
+function gapSearch(text, setId) {
+  const t = text.trim().toLowerCase(), out = [];
+  for (const [id, g] of Object.entries(jpGap?.sets || {})) {
+    if (!g.empty || (setId && id !== setId)) continue;
+    for (const r of g.c) if (r[2] && r[2].toLowerCase().includes(t)) out.push(gapCard(id, g, r));
+  }
+  return out.slice(0, 60);
+}
+/* result entries for a card: its normal printing and, if it has one, a reverse holo */
+function entriesOf(c) {
+  const out = [];
+  if (!c.v?.r || c.v.n || c.v.h) out.push({ ...c, variant: autoFinish(c) });
+  if (c.v?.r)                    out.push({ ...c, variant: 'reverse_holo' });
+  return out;
+}
+
 /* Stand-in art for Japanese sets TCGdex has no pictures for yet: the English release prints the same cards under
    different numbers. Matched card by card (same illustrator, Pokemon, HP and card type; ambiguous ones are left out).
    'ja:M1L' (Mega Brave) and 'ja:M1S' (Mega Symphonia) are both in the English set me01 (Mega Evolution).
@@ -887,6 +921,8 @@ const ART_EN = Object.fromEntries(Object.entries({
 function fbImages(setId, num, lang) {
   if (!num) return {};
   if (lang && lang !== 'en') {
+    const row = gapRow(lang, setId, num);
+    if (row) return gapImg(row[0]);   // the real Japanese scan
     const k = `${lang}:${setId}`, en = ART_EN[k]?.[num];
     if (!en) return {};
     const base = `https://assets.tcgdex.net/en/${ART_EN_SET[k]}/${en}`;
@@ -903,10 +939,12 @@ function fbImages(setId, num, lang) {
 /* the picture to show for a saved card: its stored one, unless that came from the fallback host and TCGdex has it */
 function cardImg(c, kind) {
   const stored = kind === 'large' ? c.imageLarge : c.imageSmall;
-  if (stored && !stored.includes('images.pokemontcg.io')) return stored;
+  const standIn = c.lang && c.lang !== 'en' && stored && stored.includes('assets.tcgdex.net/en/');
+  if (stored && !stored.includes('images.pokemontcg.io') && !standIn) return stored;
   return fbImages(setOfCard(c), c.number, c.lang)[kind] || stored || '';
 }
 /* The English card number whose art stands in for this foreign card, or '' when it shows its own art */
+const isStandIn = c => c.lang && c.lang !== 'en' && (!c.imageSmall || /assets\.tcgdex\.net\/en\/|tcgplayer/.test(c.imageSmall));
 const borrowedEn = c => c.lang && c.lang !== 'en' && (!c.imageSmall || c.imageSmall.includes('assets.tcgdex.net/en/'))
   ? fbImages(setOfCard(c), c.number, c.lang).borrowed || '' : '';
 const ribbon = (c, en) => `<b>${esc(c.name)}</b><i>${esc(setOfCard(c))} #${esc(c.number)} · EN art #${esc(en)}</i>`;
@@ -948,6 +986,7 @@ async function cardDetail(key) {
 /* One result per printing: the card itself, plus a Rev. Holo copy when the card has one.
    List results lack rarity/variants, so those come from each card's detail record. */
 async function apiSearch(name, setId, lang = 'en') {
+  if (lang === 'ja') await loadGap();
   const sets = setsFor(lang);
   const p = new URLSearchParams({ name, 'pagination:page': 1, 'pagination:itemsPerPage': 100 });
   if (setId) p.set('set.id', `eq:${setId}`);
@@ -958,7 +997,9 @@ async function apiSearch(name, setId, lang = 'en') {
     .filter(c => !sets.length || known.has(c.set.id))
     .sort((a, z) => order(a.set.id) - order(z.set.id))   // sets are newest-first
     .slice(0, 30);
-  return expandCards(top, lang);
+  const found = await expandCards(top, lang);
+  if (lang === 'ja') for (const c of gapSearch(name, setId)) found.push(...entriesOf(c));   // English names in sets TCGdex has no cards for
+  return found;
 }
 
 /* Foreign-language lookup by set code + card number (e.g. SV2a + 006): the number is read from the set's own list */
@@ -966,7 +1007,13 @@ async function apiByCode(lang, set, num) {
   const d = await apiJson(`${apiBase(lang)}/sets/${encodeURIComponent(set.id)}`);
   const want = String(num).toLowerCase();
   const hit = (d.cards || []).find(c => /^\d+$/.test(c.localId) && /^\d+$/.test(want) ? +c.localId === +want : String(c.localId).toLowerCase() === want);
-  if (!hit) return [];
+  if (!hit) {
+    if (lang !== 'ja') return [];
+    await loadGap();
+    const g = gapSet('ja', set.id), r = g?.empty && g.c.find(x => /^\d+$/.test(x[1]) && /^\d+$/.test(want) ? +x[1] === +want : x[1].toLowerCase() === want);
+    return r ? entriesOf(gapCard(set.id, g, r)) : [];
+  }
+  if (lang === 'ja') await loadGap();
   const c = toCard(hit, undefined, lang);
   c.set = { id: set.id, name: set.name };
   return expandCards([c], lang);
@@ -1222,10 +1269,8 @@ async function browseSet(set) {
     const cards = await fetchSetCards(set.id, lang);
     if (seq !== searchSeq) return;
     results = [];
-    for (const c of cards) {
-      if (!c.v?.r || c.v.n || c.v.h) results.push({ ...c, variant: autoFinish(c), browse: true });
-      if (c.v?.r)                    results.push({ ...c, variant: 'reverse_holo', browse: true });
-    }
+    if (!cards.length) { document.getElementById('status').textContent = `TCGdex lists ${set.name} (${set.id}) but has no card data for it yet, so its cards can't be added here. Try again later.`; return; }
+    for (const c of cards) for (const e of entriesOf(c)) results.push({ ...e, browse: true });
     renderResults();
     document.getElementById('status').textContent = `${set.name} (${set.id}): ${results.length} card${results.length === 1 ? '' : 's'}, click one to select`;
   } catch (e) {
@@ -1268,7 +1313,7 @@ function pickResult(i) {
   showSel();
   document.getElementById('sel-area').classList.remove('hidden');
   document.getElementById('add-ok').disabled = false;
-  if (c.browse && !c.detailed) {   // a set listing only knows common rarities: read the exact one from the card itself
+  if (c.browse && !c.detailed && !c.gap) {   // a set listing only knows common rarities: read the exact one from the card itself
     cardDetail(lk(c.lang, c.id)).then(d => {
       c.detailed = true;
       if (d.rarity) c.rarity = d.rarity;
@@ -1318,6 +1363,7 @@ function doAdd() {
     id:         `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     tcgId:      selCard.id,
     ...(selCard.lang && selCard.lang !== 'en' ? { lang: selCard.lang } : {}),
+    ...(selCard.gap ? { gap: 1 } : {}),
     name:       selCard.name,
     set:        selCard.set?.name  || '',
     setId:      selCard.set?.id    || '',
@@ -1388,6 +1434,7 @@ function tcgProductId(d, variant) {
 
 async function showPrice(c, idx) {
   const el = document.getElementById('det-price');
+  if (c.lang === 'ja') await loadGap();
   const search = `https://www.tcgplayer.com/search/pokemon/product?q=${encodeURIComponent(`${c.name} ${c.number || ''}`.trim())}`;
   el.textContent = c.tcgId ? 'Loading price…' : '';
   if (!c.tcgId) return;
@@ -1401,9 +1448,10 @@ async function showPrice(c, idx) {
   el.innerHTML = p
     ? `<b>${usd(p.marketPrice)}</b> market · low ${usd(p.lowPrice)}<br><a href="https://www.tcgplayer.com/product/${p.productId}" target="_blank" rel="noopener" title="TCGplayer price as of ${esc(String(p.updated || '').slice(0, 10))} (${esc(p.key)})">Buy on TCGplayer ↗</a>`
     : (() => {
-      const pid = tcgProductId(d, c.variant);
+      const gp = gapOf(c);
+      const pid = tcgProductId(d, c.variant) || gp?.pid;
       const cmLine = fx ? `<br>≈ <b>${usd(cm.trend * fx)}</b> Cardmarket trend${cm.low != null ? ` · low ${usd(cm.low * fx)}` : ''}, converted to USD` : '';
-      return `No TCGplayer price listed${cmLine}<br>`
+      return (gp?.price != null ? `<b>${usd(gp.price)}</b> TCGplayer market, saved ${esc(jpGap.built)}` : 'No TCGplayer price listed') + cmLine + '<br>'
         + (pid ? `<a href="https://www.tcgplayer.com/product/${pid}" target="_blank" rel="noopener">View on TCGplayer ↗</a>`
                : !c.lang || c.lang === 'en' ? `<a href="${search}" target="_blank" rel="noopener">Search TCGplayer ↗</a>` : '');
     })();
@@ -1431,7 +1479,7 @@ function openDetail(idx) {
     'detimgw' + (need ? ' need' : c.variant && c.variant !== 'normal' ? ` v-${c.variant}` : '');
   const be = borrowedEn(c), rib = document.getElementById('det-rib');
   rib.innerHTML = be ? ribbon(c, be) : ''; rib.classList.toggle('hidden', !be);
-  document.getElementById('det-art').textContent = be ? `The real ${LANG_NAME[c.lang]} picture isn't on TCGdex yet, so the English version's art (card #${be}) is shown. Name, number and set above are for your card.` : '';
+  document.getElementById('det-art').textContent = c.gap && gapOf(c)?.empty ? `TCGdex has no data for this set yet, so this card's English name, rarity and picture come from TCGplayer's catalog.` : be ? `The real ${LANG_NAME[c.lang]} picture isn't on TCGdex yet, so the English version's art (card #${be}) is shown. Name, number and set above are for your card.` : '';
   document.getElementById('det-name').textContent = c.name;
   document.getElementById('det-meta').textContent =
     [c.set, c.number ? `#${c.number}` : '', c.rarity, LANG_NAME[c.lang] && c.lang !== 'en' ? LANG_NAME[c.lang] : ''].filter(Boolean).join(' · ');
@@ -1673,12 +1721,14 @@ async function openValue() {
   if (run !== valRun) return;   // closed or restarted
 
   const fx = await eurUsd();
+  await loadGap();
   if (run !== valRun) return;
   let own = 0, need = 0, nOwn = 0, nNeed = 0, none = 0, nEst = 0, newest = '';
   const priced = [];
   for (const c of b.slots) {
     if (!c) continue;
-    const p = c.tcgId ? priceOf(got.get(ckey(c)), c.variant, fx) : { v: null };
+    let p = c.tcgId ? priceOf(got.get(ckey(c)), c.variant, fx) : { v: null };
+    if (p.v == null) { const gp = gapOf(c); if (gp?.price != null) p = { v: gp.price, est: true }; }   // saved TCGplayer price (sets TCGdex lacks)
     const v = p.v;
     if (v == null) { none++; continue; }
     const isNeed = c.owned === false;
@@ -1697,7 +1747,7 @@ async function openValue() {
       ${nNeed ? `<span class="vsum">Whole binder</span><b class="vsum">${usd(own + need)}</b>` : ''}
     </div>
     ${top ? `<div class="vtop"><h4>Most valuable</h4>${top}</div>` : ''}
-    <p class="vnote">TCGplayer market prices${newest ? `, updated ${esc(newest.slice(0, 10))}` : ''}.${nEst ? ` ${nEst} card${nEst === 1 ? ' has' : 's have'} no TCGplayer price, so ${nEst === 1 ? 'its' : 'their'} Cardmarket trend, converted to USD, is counted instead (marked ≈).` : ''}${none ? ` ${none} card${none === 1 ? ' has' : 's have'} no price and ${none === 1 ? 'is' : 'are'} not counted.` : ''}</p>`;
+    <p class="vnote">TCGplayer market prices${newest ? `, updated ${esc(newest.slice(0, 10))}` : ''}.${nEst ? ` ${nEst} card${nEst === 1 ? ' has' : 's have'} no current TCGplayer price, so an estimate is counted instead: Cardmarket converted to USD, or a saved TCGplayer price (marked ≈).` : ''}${none ? ` ${none} card${none === 1 ? ' has' : 's have'} no price and ${none === 1 ? 'is' : 'are'} not counted.` : ''}</p>`;
 }
 
 /* ── Shopping list: the cards marked Need, with TCGplayer prices and buy links ── */
@@ -1725,12 +1775,15 @@ async function openShop() {
   const got = await fetchDetails(ids, () => run === shopRun, n => renderShop(`Looking up prices… ${n} of ${ids.length}`));
   if (run !== shopRun) return;
   const fx = await eurUsd();
+  await loadGap();
   if (run !== shopRun) return;
   for (const r of shopRows) {
-    const p = r.c.tcgId ? priceOf(got.get(ckey(r.c)), r.c.variant, fx) : { v: null, pid: null };
+    let p = r.c.tcgId ? priceOf(got.get(ckey(r.c)), r.c.variant, fx) : { v: null, pid: null };
+    const gp = gapOf(r.c);
+    if (p.v == null && gp?.price != null) p = { v: gp.price, est: true, pid: gp.pid };
     r.price = p.v;
     r.est = !!p.est;
-    r.pid = p.pid ?? null;
+    r.pid = p.pid ?? gp?.pid ?? null;
   }
   shopReady = true;
   renderShop();
@@ -1752,7 +1805,7 @@ function renderShop(loading) {
   const unpriced = shopRows.filter(r => r.price == null).reduce((n, r) => n + r.qty, 0);
   const nEst = shopRows.filter(r => r.est).reduce((n, r) => n + r.qty, 0);
   sum.innerHTML = loading ? esc(loading)
-    : `<b>${total.toLocaleString()}</b> card${total === 1 ? '' : 's'} to get · about <b>${usd(est)}</b> at TCGplayer market${nEst ? ` (${nEst} priced from Cardmarket, converted to USD, marked ≈)` : ''}${unpriced ? ` (${unpriced} without a price)` : ''}`;
+    : `<b>${total.toLocaleString()}</b> card${total === 1 ? '' : 's'} to get · about <b>${usd(est)}</b> at TCGplayer market${nEst ? ` (${nEst} estimated, marked ≈: Cardmarket converted to USD, or a saved TCGplayer price)` : ''}${unpriced ? ` (${unpriced} without a price)` : ''}`;
   list.innerHTML = rows.map(r => {
     const c = r.c;
     const link = r.pid ? `https://www.tcgplayer.com/product/${r.pid}` : tcgSearch(c);
@@ -1946,7 +1999,8 @@ function pickBulkSet(i) {
 /* All cards of a set with rarity and variant flags, cached for a day.
    The set endpoint lists every card but not rarity, so fetch each rarity bucket in parallel (same for the variant flags). */
 async function fetchSetCards(setId, lang = 'en') {
-  const api = apiBase(lang), ckeyS = lang === 'en' ? setId : `${lang}:${setId}`;
+  if (lang === 'ja') await loadGap();
+  const api = apiBase(lang), ckeyS = (lang === 'en' ? setId : `${lang}:${setId}`) + (gapSet(lang, setId) ? '@' + jpGap.built : '');
   try {
     const entry = JSON.parse(localStorage.getItem(SK_BULK) || '{}')[ckeyS];
     if (entry && Date.now() - entry.t < BULK_TTL) return entry.d;
@@ -1967,6 +2021,10 @@ async function fetchSetCards(setId, lang = 'en') {
     card.v = { n: vn.has(c.id), r: vr.has(c.id), h: vh.has(c.id) };
     return card;
   });
+  if (!cards.length) {   // a set TCGdex has no cards for yet: use the saved TCGplayer data if there is any, and don't cache the emptiness
+    const g = gapSet(lang, setId);
+    return g?.empty ? g.c.map(r => gapCard(setId, g, r)) : cards;
+  }
   try {
     const cache = JSON.parse(localStorage.getItem(SK_BULK) || '{}');
     cache[ckeyS] = { t: Date.now(), d: cards };
@@ -2057,7 +2115,7 @@ function applyBulkFilters() {
 
 function renderBulkGrid() {
   const status = document.getElementById('bulk-status');
-  if (!bulkCards.length) { status.textContent = 'No cards found in this set.'; return; }
+  if (!bulkCards.length) { status.textContent = `TCGdex lists this set but has no card data for it yet, so its cards can't be added here. Try again later.`; return; }
   const nRev = bulkVisible.filter(k => k.endsWith(':r')).length;
   status.textContent = bulkVisible.length
     ? `${bulkVisible.length - nRev} cards${nRev ? ` + ${nRev} reverse holos` : ''} will be added — click a card to grey it out (still to get)`
@@ -2130,6 +2188,7 @@ function doBulkAdd() {
       id:         `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       tcgId:      card.id,
       ...(card.lang && card.lang !== 'en' ? { lang: card.lang } : {}),
+      ...(card.gap ? { gap: 1 } : {}),
       name:       card.name,
       set:        card.set?.name  || '',
       setId:      card.set?.id    || '',
@@ -2261,6 +2320,7 @@ async function initShared() {
     st = { binders: [b], activeId: b.id };
     document.title = `${b.name} · MegaBinder`;
     renderAll();
+    loadGap().then(() => renderAll());
   } catch {
     const e = document.getElementById('empty-msg');
     e.querySelector('h2').textContent = "This link couldn't be read";
@@ -2272,7 +2332,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.18.1';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.18.3';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
@@ -2463,7 +2523,7 @@ document.addEventListener('visibilitychange', () => {
 async function upgradeArt() {
   if (RO) return;
   const sets = new Map();
-  for (const b of st.binders) for (const c of b.slots) if (c && borrowedEn(c)) {
+  for (const b of st.binders) for (const c of b.slots) if (c && (isStandIn(c) || c.gap)) {
     const k = `${c.lang}:${setOfCard(c)}`;
     if (!sets.has(k)) sets.set(k, []);
     sets.get(k).push(c);
@@ -2477,10 +2537,12 @@ async function upgradeArt() {
     const i = k.indexOf(':');
     try {
       const d = await apiJson(`${apiBase(k.slice(0, i))}/sets/${encodeURIComponent(k.slice(i + 1))}`);
-      const img = new Map((d.cards || []).filter(x => x.image).map(x => [x.localId, x.image]));
+      const byNum = new Map((d.cards || []).map(x => [x.localId, x]));
       for (const c of cards) {
-        const u = img.get(c.number);
-        if (u) { c.imageSmall = `${u}/low.webp`; c.imageLarge = `${u}/high.webp`; changed = true; }
+        const x = byNum.get(c.number);
+        if (!x) continue;
+        if (c.gap) { c.name = x.name; delete c.gap; changed = true; }   // TCGdex has the set now: its own (Japanese) name
+        if (x.image && isStandIn(c)) { c.imageSmall = `${x.image}/low.webp`; c.imageLarge = `${x.image}/high.webp`; changed = true; }
       }
       last[k] = Date.now();
     } catch {}
@@ -2506,7 +2568,7 @@ else {
   navigator.storage?.persist?.();   // ask the browser not to evict saved binders under storage pressure
   loadSets();   // background — fetches & caches all set names for autocomplete
   renderAll();
-  upgradeArt();
+  loadGap().then(() => { renderAll(); upgradeArt(); });
 }
 </script>
 </body>

@@ -7,7 +7,7 @@ const CACHE_APP = 'megabinder-app-v1';
 const CACHE_IMG = 'megabinder-img-v1';
 const IMG_HOST = 'assets.tcgdex.net';
 const IMG_LIMIT = 1500;   // keep the picture cache bounded
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
+const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'jp-gap.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_APP).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
