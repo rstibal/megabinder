@@ -1206,15 +1206,15 @@ function addHint() {
 async function onLangChange() {
   const l = addLang();
   document.getElementById('name-in').placeholder = l === 'en' ? 'Search card name…' : 'Name, or set code + number (SV2a 006)';
-  document.getElementById('set-in').value = '';
   document.getElementById('set-drop').classList.add('hidden');
-  results = []; selCard = null;
+  results = []; selCard = null; ++searchSeq;
   document.getElementById('rg').innerHTML = '';
   document.getElementById('sel-area').classList.add('hidden');
   document.getElementById('add-ok').disabled = true;
   document.getElementById('status').textContent = addHint();
   await loadLangSets(l);
   if (document.getElementById('name-in').value.trim()) onNameInput();
+  else { const set = findSet(document.getElementById('set-in').value, l); if (set) browseSet(set); }
 }
 
 function openAdd(idx) {
@@ -1993,7 +1993,6 @@ async function openBulk() {
 
 const bulkLang = () => document.getElementById('bulk-lang').value;
 async function onBulkLang() {
-  document.getElementById('bulk-set-in').value = '';
   bulkCards = []; bulkVisible = [];
   ['bulk-bar','bcg','bulk-filters','bulk-set-drop'].forEach(id => document.getElementById(id).classList.add('hidden'));
   document.getElementById('bulk-ok').disabled = true;
@@ -2364,7 +2363,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.10.18.6';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.10.18.7';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
