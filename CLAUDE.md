@@ -20,7 +20,7 @@ A single-file web app (`index.html`, vanilla HTML/CSS/JS, no build step) for tra
 - Finish (Normal / Holo / Full Art / Gold / Rainbow / Rev. Holo) is automatic from rarity and TCGdex variants. There is no manual finish picker, so don't add one.
 - Keep visual effects subtle and non-animated; the user finds motion distracting (reverse holos are a static stripe pattern plus a light frame).
 - Drag-and-drop for slots is deferred. Don't build it unless asked.
-- The file uses LF line endings (in the repo and the working copy); preserve them when scripting edits. Git may print a "LF will be replaced by CRLF" warning because `core.autocrlf` is `true` on this machine; it is harmless.
+- The file uses LF line endings (in the repo and the working copy); preserve them when scripting edits. This repo sets `core.autocrlf` to `false` locally so git does not convert them.
 
 ## Checking changes
 
