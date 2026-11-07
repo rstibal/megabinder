@@ -47,7 +47,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .chip b{color:var(--text)}
 
 /* ── Page ────────────────────────────────────────────────── */
-.viewport{display:flex;justify-content:center;padding:20px 16px 40px}
+.viewport{display:flex;justify-content:center;padding:20px 16px 40px;overflow-x:clip}
 .empty-binder{text-align:center;color:var(--muted);padding:80px 20px;flex:1}
 .empty-binder h2{color:var(--text);margin:12px 0 6px}
 .binder-wrap{flex:1;max-width:920px}
@@ -1342,8 +1342,26 @@ document.addEventListener('pointerdown', e => {   // a press elsewhere closes th
 /* ── Navigation ───────────────────────────────────────────── */
 function goPage(d) {
   const b = ab(); if (!b) return;
-  pg = Math.max(0, Math.min(pagesNow(b) - 1, pg + d));
-  renderBinder();
+  const to = Math.max(0, Math.min(pagesNow(b) - 1, pg + d));
+  if (to === pg) { renderBinder(); return; }
+  pg = to;
+  turnPage(d);
+}
+/* A quick slide so a page turn is visible even when the two pages look alike: the old page slides out
+   the way it was swiped, the new one slides in (about a quarter second; none with reduced motion). */
+let turnTok = 0;
+function turnPage(d) {
+  const cg = document.getElementById('cg'), tok = ++turnTok;
+  cg.getAnimations().forEach(a => a.cancel());   // a quick second turn skips the rest of the first
+  if (!cg.animate || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) { renderBinder(); return; }
+  const out = cg.animate([{ transform: 'none', opacity: 1 }, { transform: `translateX(${-d * 35}%)`, opacity: 0 }], { duration: 110, easing: 'ease-in', fill: 'forwards' });
+  const swap = () => {   // also on a timer, so the page still turns if the browser holds the animation back
+    if (tok !== turnTok) return;
+    turnTok++;
+    renderBinder(); out.cancel();
+    cg.animate([{ transform: `translateX(${d * 35}%)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 140, easing: 'ease-out' });
+  };
+  out.onfinish = swap; setTimeout(swap, 200);
 }
 
 function switchBinder(id) {
@@ -2534,7 +2552,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.11.07.2';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.11.07.3';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
