@@ -1,86 +1,91 @@
 # MegaBinder
 
-A single-file browser app for tracking your physical Pokémon TCG collection. Searches real card data and art via the [TCGdex](https://tcgdex.dev) API, stores your collection locally in the browser.
+**▶ Open the app: [rstibal.github.io/megabinder](https://rstibal.github.io/megabinder/)**
+
+A digital binder for your physical Pokémon TCG collection. Lay your cards out page by page the way they sit in your real binder, mark what you still need, see what it's worth, and keep it in sync across your devices. No account, no server, no install required. It runs in the browser and can be added to your home screen as an app.
+
+Card data, art and prices come from [TCGdex](https://tcgdex.dev).
 
 ---
 
 ## Features
 
-- **Real card art** — searches pokemontcg.io as you type, results display actual card thumbnails
-- **Multiple binders** — create, rename, and switch between separate binders (e.g. one per set, one per type)
-- **Configurable grid** — choose from 2×2 up to 6×6 pocket layouts, adjustable per binder
-- **Add by Set** — load an entire set and add cards in bulk. Filter by **rarity** (Common, Uncommon, Rare, Double Rare, Illustration Rare, Ultra Rare, Special Illustration Rare, Hyper Rare, plus Other for older sets) and by **card number** (e.g. `1-198, 215`); only matching cards are shown and selected, and you can still click individual cards to deselect them. A separate **Rev. Holo** chip row (Common / Uncommon / Rare, off by default) adds reverse holos as their own slots right after the normal copy. Bulk-added cards get their finish automatically: Ultra Rare and Illustration / Special Illustration Rare → Full Art, Hyper Rare → Gold (Secret Rare → Rainbow in older sets), otherwise Normal or Holo from TCGdex's per-card variant data, and Rev. Holo for reverse copies
-- **Search by card** — each printing is its own result (a Common shows a normal and a Rev. Holo tile), and the finish is set automatically; there's no finish picker. TCG Pocket sets are excluded
-- **Binder planner** — every card in an Add by Set batch goes into the binder; click a card to grey it out as *still to get* (or hit **All Needed** to start a set from scratch). Greyed slots show a NEED badge and don't count as owned; open one and choose **Mark as Owned** when you get it. The header shows owned vs. to-get counts
-- **Parallel tracking** — track Normal, Reverse Holo, Holo, Full Art, Rainbow, and Gold finishes per slot, each with a distinct visual effect
-- **TCGplayer prices** — the card popup shows the current TCGplayer market and low price for that exact printing (normal, holofoil or reverse holofoil, from TCGdex's pricing data) with a Buy on TCGplayer link. Prices are fetched live when you open a card and are not stored.
-- **Binder value** — the **$ Binder value** button (sidebar, under Tools) adds up TCGplayer market prices for the open binder: collected, still to get, whole binder, and the five most valuable cards. Prices are looked up only when you press it, four at a time.
-- **Find and filter** — a search box above the grid (press `/` to focus it) matches name, number, set, rarity and finish; the All / Owned / Need buttons filter by ownership. The grid then shows only the matches, each tagged with its page and slot, and the card popup's ‹ › step through the matches. Clearing the filter returns you to the page you were on.
-- **Shopping list** — the **Shopping list** button (sidebar, under This binder) lists every card marked Need, with its TCGplayer market price and a Buy link to that exact printing (a search link when there is no price). Duplicates become one row with a quantity. Sort by price, binder order or name, and Copy list puts it on the clipboard as plain text.
-- **Install as an app** — MegaBinder is installable (Chrome and Edge show an **Install app** button in the sidebar; on iPhone or iPad use Share, then Add to Home Screen). Once installed it opens full-screen and still loads with no signal: your binders live in the browser, and card pictures you have already looked at are cached. Searching sets, prices and cloud sync need a connection. The service worker (`sw.js`) always checks for a newer version first, so updates still arrive on a normal reload.
-- **Quick actions** — right-click a card (or press and hold on a phone) for a menu: **Mark as Owned** / **Mark as Needed**, **Details…** and **Remove Card**. Removing a card, from the menu or the popup, shows an **Undo** for a few seconds.
-- **Adding pages** — on the last page the › arrow turns into a **+**; press it to start a new page even if the current one isn't full. An extra empty page you added can be removed again with **Remove page**.
-- **Missing card art** — TCGdex lists some sets without a picture even though the art exists under the *base* set's folder (the Trainer and Galarian Galleries live in `swsh12/`, not `swsh12tg/`, and likewise Shiny Vault, Shining Legends and Dragon Majesty). `IMG_TCGDEX` in `index.html` maps those sets to the right folder; cards saved earlier pick the picture up automatically. A few promo sets that TCGdex lacks entirely fall back to pokemontcg.io (`IMG_FALLBACK`). Sets with no picture anywhere (McDonald's collections, trainer kits, Scarlet & Violet Energy and a few others) show a name placeholder.
-- **Cloud sync** — optional. The ☁ button connects to a private GitHub gist in your own account (classic token with only the `gist` scope, stored in that browser only) so binders stay in sync across devices. Changes push a few seconds after you make them and pull when you return to the tab; if both sides changed you choose which to keep, and every save stays in the gist's revision history
-- **Persistent storage** — everything saves to `localStorage`; no account or server required
-- **Set autocomplete** — full set list fetched once and cached; type to filter
-- **Page navigation** — ◀ ▶ buttons or ← → arrow keys to flip through binder pages
+### Building binders
+- **Multiple binders**, each with its own pocket grid (2×2 up to 6×6).
+- **Add by set.** Load a whole set and filter by rarity (Common through Hyper Rare) and card number (e.g. `1-198, 215`). Optionally add reverse holos as their own slots next to the normal copy.
+- **Search by card.** Every printing is its own result, so a Common shows both its normal and reverse holo.
+- **Automatic finish.** Normal, Holo, Full Art, Gold, Rainbow or Rev. Holo is worked out from the rarity and TCGdex's variant data. There's nothing to pick by hand.
+- **Rearrange** cards between slots (unlock the layout first), add pages, and remove empty extra pages.
+
+### Planning and shopping
+- **Need vs. owned.** Grey out cards you still have to get (or mark a whole set as needed and tick cards off as they arrive). The header shows owned and to-get counts.
+- **Prices.** The card popup shows the TCGplayer market and low price for that exact printing, with a Buy link. Cardmarket's trend price (converted to USD, marked ≈) fills in when TCGplayer has none.
+- **Binder value.** Totals for collected, still-to-get and the whole binder, plus the five most valuable cards.
+- **Shopping list.** Every needed card with its price and Buy link, sortable, with duplicates merged. Copy it as plain text.
+- **Find and filter.** Search by name, number, set, rarity or finish (press `/`), and show All, Owned or Need.
+
+### Languages
+- **English, Japanese and Traditional Chinese** cards. Japanese and Chinese cards show their English name and set name next to the original.
+- Gaps in TCGdex's Japanese data are filled from a bundled TCGplayer catalogue snapshot, and some newer Japanese sets borrow the matching English card's art (marked with a ribbon) until real scans appear.
+
+### Everyday use
+- **Turn pages** with the arrows, the ← → keys, or by swiping on a phone. A short slide shows each turn.
+- **Fit to screen** sizes the cards so a whole page fits the window. Handy on foldables and tablets.
+- **Quick menu.** Right-click a card (or press and hold on a phone) to mark it owned or needed, open its details, or remove it, with Undo.
+- **Share** a read-only copy of a binder as a link.
+- **Install as an app.** Chrome and Edge show an Install button; on iPhone or iPad use Share → Add to Home Screen. Once installed it opens full-screen and loads offline, with your binders and any card art you've already viewed. Searching, prices and sync need a connection.
+
+### Cloud sync (optional)
+The ☁ button keeps your binders in sync through a **private GitHub gist in your own account**. You need a GitHub classic token with only the `gist` scope, which is stored in that browser only. Changes upload a few seconds after you make them and download when you come back to the tab. If both sides changed, you choose which to keep, and every save stays in the gist's revision history.
+
+Without sync, everything is stored in your browser's `localStorage` on that device.
 
 ---
 
-## Usage
+## Running it yourself
 
-### Local file (recommended for full functionality)
+It's a single `index.html` with no build step and no dependencies. Serve the folder with any static server:
 
 ```bash
-# Clone the repo
 git clone https://github.com/rstibal/megabinder.git
-
-# Open directly in Chrome — no build step needed
-open index.html          # macOS
-start index.html         # Windows
-xdg-open index.html      # Linux
+cd megabinder
+python -m http.server 8765
 ```
 
-The app needs an internet connection to call the PokéTCG.io API for card search and set data. Everything else runs offline.
+Then open http://localhost:8765/index.html. (Opening the file directly works for most things, but the service worker and the bundled language data need a server.)
 
-### GitHub Pages
+The live site is published by GitHub Pages from `main`.
 
-Live at https://rstibal.github.io/megabinder/ (served from `main`). The app works as a hosted static page — card search, images, and localStorage all function normally from a served URL.
+### Files
 
----
+| File | Purpose |
+|------|---------|
+| `index.html` | The whole app: markup, styles and script |
+| `sw.js` | Service worker (network-first, so updates arrive on a normal reload) |
+| `manifest.webmanifest`, `icon-*.png`, `apple-touch-icon.png` | Installable app metadata and icons |
+| `jp-gap.json`, `jp-en.json`, `zh-en.json` | Japanese gap data and English names for Japanese and Chinese cards |
+| `tools/build_jp_gap.py` | Rebuilds `jp-gap.json` and `jp-en.json` from [TCGCSV](https://tcgcsv.com) |
+| `tools/build_zh_en.py` | Rebuilds `zh-en.json` (run after `build_jp_gap.py`) |
+| `tools/build_icons.py` | Draws the Poké Ball app icons |
 
-## API
+### Stored in the browser
 
-Card data and images come from [TCGdex](https://tcgdex.dev) — free, open source, no API key, CORS-enabled. (The app previously used PokéTCG.io, which is deprecated and shutting down on 2027-03-01.)
-
-Endpoints used (English): `/sets`, `/sets/{id}`, `/cards?name=…`, `/cards?set.id=eq:{id}&rarity=eq:{rarity}`, `/cards/{id}`. Card images are `{image}/low.webp` and `{image}/high.webp`. Transient 5xx/429 responses are retried with backoff.
-
-Search results don't include rarity, so it's fetched when you pick a card. For bulk add, each of the 8 rarities and the normal/reverse/holo variant flags are fetched in parallel per set (the set endpoint lists neither).
-
-### What gets cached in localStorage
-
-| Key | Contents | TTL |
-|-----|----------|-----|
-| `pkBinder4` | All binder and card data | Permanent |
-| `pkSets5` | Full set list for autocomplete | 7 days |
-| `pkBulkCache6` | Per-set card listings (bulk add) | 24 hours |
-
----
-
-## Tech
-
-Vanilla HTML, CSS, and JavaScript — no frameworks, no build step, no dependencies. Single file.
+| Key | Contents |
+|-----|----------|
+| `pkBinder4` | All binders and cards |
+| `pkSync1` | Cloud sync settings for this browser |
+| `pkFit1`, `pkFx1` | Per-device display preferences |
+| `pkSets6`, `pkSetsL1`, `pkBulkCache6` | Cached set lists and set contents |
 
 ---
 
-## Development
+## Credits
 
-Open `index.html` in a browser. All logic is in the `<script>` block at the bottom of the file; all styles are in the `<style>` block in `<head>`.
+- Card data, images and prices: [TCGdex](https://tcgdex.dev) (free, open source, no API key)
+- Japanese catalogue data: [TCGCSV](https://tcgcsv.com), a mirror of TCGplayer's catalogue
+- A few promo images: [pokemontcg.io](https://pokemontcg.io)
 
-[Claude Code](https://claude.ai/code) works well for iterating on this — point it at the repo and describe what you want to change.
-
----
+Pokémon and all related names and card images are trademarks of Nintendo, Creatures Inc. and GAME FREAK inc. MegaBinder is an unofficial fan project and is not affiliated with or endorsed by them.
 
 ## License
 
