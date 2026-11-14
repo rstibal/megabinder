@@ -155,6 +155,11 @@ body.drag-on,body.drag-on *{cursor:grabbing!important;user-select:none;-webkit-u
 .nav-btn.drop-t{border-color:#facc15;background:rgba(250,204,21,.14)}
 .drag-ghost{position:fixed;z-index:200;pointer-events:none;width:84px;aspect-ratio:2.5/3.5;border-radius:6px;overflow:hidden;box-shadow:0 10px 28px rgba(0,0,0,.6);transform:translate(-50%,-50%) rotate(3deg);opacity:.92;background:var(--surf2)}
 .drag-ghost img{width:100%;height:100%;object-fit:cover;display:block}
+.ins-bar{position:fixed;z-index:190;width:4px;border-radius:2px;background:#facc15;box-shadow:0 0 6px rgba(250,204,21,.7);pointer-events:none}
+.ins-bar.hidden{display:none}
+.mvrow{display:flex;gap:12px}.mvrow label{flex:1;display:flex;flex-direction:column;gap:4px;font-size:.78rem;color:var(--muted)}
+#m-move .btn:disabled{opacity:.4;cursor:default}
+.mv-hint{font-size:.8rem;color:var(--muted);line-height:1.4;margin:10px 0 0;min-height:2.2em}
 .ro-note{display:none;font-size:.78rem;color:var(--muted);line-height:1.4;padding:0 4px}
 .ro-note a{color:#93c5fd}
 body.ro .ro-note{display:block}
@@ -707,6 +712,23 @@ body.fit.nav-bar.fit-find .fbar{left:8px;top:calc(var(--rw) + 8px)}
       <button class="btn btn-ghost" id="cfm-cancel" onclick="closeM('m-confirm')">Cancel</button>
       <button class="btn btn-ghost cfm-alt hidden" id="cfm-alt" onclick="confirmAlt()"></button>
       <button class="btn btn-red" id="cfm-ok" onclick="confirmOk()"></button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="m-move">
+  <div class="modal m-set">
+    <h2>Move to slot</h2>
+    <p class="mv-hint" id="mv-name" style="margin:0 0 12px"></p>
+    <div class="mvrow">
+      <label>Page<input class="fi" id="mv-pg" type="number" min="1" inputmode="numeric" oninput="mvCheck()" onkeydown="if(event.key==='Enter')mvGo('ins')"></label>
+      <label>Slot<input class="fi" id="mv-sl" type="number" min="1" inputmode="numeric" oninput="mvCheck()" onkeydown="if(event.key==='Enter')mvGo('ins')"></label>
+    </div>
+    <p class="mv-hint" id="mv-hint"></p>
+    <div class="mfoot">
+      <button class="btn btn-ghost" onclick="closeM('m-move')">Cancel</button>
+      <button class="btn btn-ghost" id="mv-swap" onclick="mvGo('swap')">Swap</button>
+      <button class="btn btn-red" id="mv-ins" onclick="mvGo('ins')">Insert</button>
     </div>
   </div>
 </div>
@@ -1391,6 +1413,7 @@ async function onLangChange() {
 }
 
 function openAdd(idx) {
+  if (Date.now() < noOpenUntil) return;   // the tap that ended a long-press on an empty slot
   const b = ab(); if (!b) return;
   addSlot = (idx !== undefined) ? idx : null;
   selCard = null; results = [];
@@ -1703,24 +1726,37 @@ function openDetail(idx) {
 
 /* ── Quick actions: right-click (or long-press on a phone) a card ───────── */
 let noOpenUntil = 0;   // swallow the tap that ends a long-press
+let dragOn = false;    // a rearranging drag is under way (a long-press must not open the menu then)
 const ctxEl = () => document.getElementById('ctx');
 
 function hideCtx() { ctxEl().classList.add('hidden'); }
 
 function openCtx(idx, x, y) {
-  const b = ab(); const c = b?.slots[idx]; if (!c || RO) return;
-  const need = c.owned === false;
+  const b = ab(); if (!b || RO) return;
+  const c = b.slots[idx];
   const el = ctxEl();
-  el.innerHTML = `<div class="hd">${esc(c.name)}${c.number ? ' #' + esc(c.number) : ''}</div>
-    <button data-a="own"><span class="ico">${need ? '✓' : '○'}</span>${need ? 'Mark as Owned' : 'Mark as Needed'}</button>
-    <button data-a="open"><span class="ico">🔍</span>Details…</button>
-    <button data-a="rm" class="danger"><span class="ico">✕</span>Remove Card</button>`;
+  if (!c) {   // an empty slot: only while rearranging, to close the gap
+    if (!rearr || !b.slots.slice(idx + 1).some(Boolean)) return;
+    el.innerHTML = `<div class="hd">Empty slot · ${slotName(idx)}</div>
+      <button data-a="rmblank"><span class="ico">⇤</span>Remove this blank</button>`;
+  } else {
+    const need = c.owned === false;
+    el.innerHTML = `<div class="hd">${esc(c.name)}${c.number ? ' #' + esc(c.number) : ''}</div>
+      <button data-a="own"><span class="ico">${need ? '✓' : '○'}</span>${need ? 'Mark as Owned' : 'Mark as Needed'}</button>
+      <button data-a="open"><span class="ico">🔍</span>Details…</button>
+      ${rearr ? `<button data-a="blank"><span class="ico">⇥</span>Insert blank slot here</button>
+      <button data-a="move"><span class="ico">↪</span>Move to slot…</button>` : ''}
+      <button data-a="rm" class="danger"><span class="ico">✕</span>Remove Card</button>`;
+  }
   el.onclick = e => {
     const a = e.target.closest('button')?.dataset.a; if (!a) return;
     hideCtx();
-    if (a === 'own')  { c.owned = need; save(); renderAll(); }   // need → owned (true), owned → need (false)
+    if (a === 'own')  { c.owned = c.owned !== false ? false : true; save(); renderAll(); }   // need → owned, owned → need
     if (a === 'open') openDetail(idx);
     if (a === 'rm')   removeCard(idx);
+    if (a === 'blank')   insertBlank(idx);
+    if (a === 'move')    openMoveTo(idx);
+    if (a === 'rmblank') removeBlank(idx);
   };
   el.classList.remove('hidden');
   const r = el.getBoundingClientRect();
@@ -1730,8 +1766,9 @@ function openCtx(idx, x, y) {
 }
 
 /* ── Rearranging: unlock the layout, then drag a card onto another slot ─────────────
-   Dropping on an empty slot moves the card; dropping on a filled one swaps the two. Hovering a dragged
-   card over the page arrows turns the page. The layout re-locks on every page load and while searching. */
+   Dropping on an empty slot moves the card; dropping on the middle of a filled one swaps the two, and on
+   its left or right edge inserts the card there, shifting the rest along (see shiftInsert). Hovering a
+   dragged card over the page arrows turns the page. The layout re-locks on every page load and while searching. */
 let rearr = false;
 function syncRearr() {
   document.body.classList.toggle('rearr', rearr);
@@ -1746,7 +1783,106 @@ function toggleRearr() {
   if (RO) return;
   if (!rearr && filtering()) { showToast('Clear the search or filter first: rearranging needs the full page layout'); return; }
   rearr = !rearr; hideCtx(); syncRearr();
-  if (rearr) showToast('Layout unlocked: drag a card onto another slot. Lock it again when you are done.');
+  if (rearr) showToast('Layout unlocked: drop a card on another to swap, or on its edge to insert and shift the rest along. Lock it again when you are done.');
+}
+
+/* Shifting: changes that slide a run of cards one slot along. A run stops at the first empty slot (it
+   takes up the shift), so the pages after a gap are left alone. Each change can be undone from its toast. */
+const isE = (s, i) => !s[i];
+const trimSlots = s => { while (s.length && !s[s.length - 1]) s.pop(); };
+function layoutChange(fn, msg) {
+  const b = ab(); if (!b) return;
+  const before = b.slots.slice();
+  const r = fn(b.slots);
+  trimSlots(b.slots);
+  const after = b.slots.slice();
+  if (r === false || (before.length === after.length && before.every((x, i) => x === after[i]))) return;
+  save(); renderAll();
+  showToast(typeof msg === 'function' ? msg(r) : msg, 'Undo', () => {
+    const bb = st.binders.find(x => x.id === b.id); if (!bb) return;
+    const n = Math.max(bb.slots.length, after.length);
+    for (let i = 0; i < n; i++) if ((bb.slots[i] || null) !== (after[i] || null)) { showToast('The layout has changed since'); return; }
+    bb.slots = before.slice(); trimSlots(bb.slots); save(); renderAll();
+  });
+}
+/* Put the card at `from` just before slot `p`. Moving it back, the cards from p on slide forward (up to
+   a gap or its old slot); moving it forward, the cards before p slide back. Returns how many moved. */
+function shiftInsert(s, from, p) {
+  const c = s[from]; if (!c) return false;
+  s[from] = null;
+  if (p <= from) {
+    let g = p; while (!isE(s, g)) g++;
+    while (s.length <= g) s.push(null);
+    for (let i = g; i > p; i--) s[i] = s[i - 1];
+    s[p] = c;
+    return g - p;
+  }
+  let h = p - 1; while (!isE(s, h)) h--;
+  while (s.length < p) s.push(null);
+  for (let i = h; i < p - 1; i++) s[i] = s[i + 1];
+  s[p - 1] = c;
+  return p - 1 - h;
+}
+function insertCard(from, p) {
+  const name = ab()?.slots[from]?.name || 'card';
+  layoutChange(s => shiftInsert(s, from, p),
+    n => n ? `Inserted ${name}, ${n} card${n === 1 ? '' : 's'} shifted` : `Moved ${name}`);
+}
+function insertBlank(i) {   // push the cards from slot i along one place, up to the next gap
+  layoutChange(s => {
+    let g = i; while (!isE(s, g)) g++;
+    while (s.length <= g) s.push(null);
+    for (let k = g; k > i; k--) s[k] = s[k - 1];
+    s[i] = null;
+    return g - i;
+  }, n => `Inserted a blank slot, ${n} card${n === 1 ? '' : 's'} shifted`);
+}
+function removeBlank(i) {   // pull the cards after an empty slot back one place, up to the next gap
+  layoutChange(s => {
+    if (!isE(s, i)) return false;
+    let g = i + 1; while (g < s.length && !isE(s, g)) g++;
+    for (let k = i; k < g - 1; k++) s[k] = s[k + 1];
+    s[g - 1] = null;
+    return g - 1 - i;
+  }, n => `Removed a blank slot, ${n} card${n === 1 ? '' : 's'} shifted back`);
+}
+const slotName = i => { const p = spp(ab()); return `page ${Math.floor(i / p) + 1}, slot ${i % p + 1}`; };
+
+/* Move to slot…: send a card to a page and slot by number instead of dragging it across pages */
+let mvFrom = -1;
+function openMoveTo(idx) {
+  const b = ab(); const c = b?.slots[idx]; if (!c) return;
+  mvFrom = idx;
+  document.getElementById('mv-name').textContent = `${c.name}${c.number ? ' #' + c.number : ''}, now on ${slotName(idx)}`;
+  document.getElementById('mv-pg').value = Math.floor(idx / spp(b)) + 1;
+  document.getElementById('mv-sl').value = idx % spp(b) + 1;
+  document.getElementById('mv-sl').max = spp(b);
+  mvCheck();
+  openM('m-move');
+  document.getElementById('mv-pg').select();
+}
+function mvTarget() {
+  const b = ab(); if (!b) return -1;
+  const p = parseInt(document.getElementById('mv-pg').value, 10), s = parseInt(document.getElementById('mv-sl').value, 10);
+  if (!(p >= 1) || !(s >= 1) || s > spp(b) || p > totalPg(b) + 1) return -1;
+  return (p - 1) * spp(b) + s - 1;
+}
+function mvCheck() {
+  const t = mvTarget(), b = ab();
+  const z = t >= 0 ? b?.slots[t] : null;
+  document.getElementById('mv-swap').textContent = z ? 'Swap' : 'Move';
+  document.getElementById('mv-swap').disabled = document.getElementById('mv-ins').disabled = t < 0 || t === mvFrom;
+  document.getElementById('mv-hint').textContent = t < 0
+    ? `Pick a page up to ${totalPg(b) + 1} and a slot from 1 to ${spp(b)}.`
+    : t === mvFrom ? 'That is where the card is now.'
+    : z ? `That slot holds ${z.name}. Swap trades the two; Insert puts this card there and shifts the cards along.`
+    : 'That slot is empty.';
+}
+function mvGo(mode) {
+  const t = mvTarget(); if (t < 0 || t === mvFrom) return;
+  closeM('m-move');
+  if (mode === 'ins') insertCard(mvFrom, t > mvFrom ? t + 1 : t);   // the card ends up on the slot typed
+  else moveCard(mvFrom, t);
 }
 
 function moveCard(from, to) {
@@ -1770,8 +1906,26 @@ function moveCard(from, to) {
   let d = null;   // the drag in progress: { idx, x0, y0, on, ghost, over, btn, flipT }
   const under = (x, y) => document.elementFromPoint(x, y);
   const mark = el => { if (d.over !== el) { d.over?.classList.remove('drop-t'); d.over = el; el?.classList.add('drop-t'); } };
+  /* The outer quarter of a filled card (left or right) is an insert zone: returns the slot the card
+     goes in front of, or -1 for a plain drop. The dragged card's own edges and its neighbours' facing
+     edges would change nothing, so they stay plain. */
+  const bar = document.createElement('div'); bar.className = 'ins-bar hidden'; document.body.appendChild(bar);
+  function insAt(slot, x) {
+    if (!slot?.classList.contains('slot-filled') || !d) return -1;
+    const i = +slot.dataset.idx, r = slot.getBoundingClientRect(), f = (x - r.left) / r.width;
+    const p = f < .25 ? i : f > .75 ? i + 1 : -1;
+    return p < 0 || p === d.idx || p === d.idx + 1 ? -1 : p;
+  }
+  function showBar(slot, right) {
+    const r = slot.getBoundingClientRect(), gap = parseFloat(getComputedStyle(slot.parentElement).columnGap) || 8;
+    bar.style.left = (right ? r.right + gap / 2 : r.left - gap / 2) - 2 + 'px';
+    bar.style.top = r.top + 'px'; bar.style.height = r.height + 'px';
+    bar.classList.remove('hidden');
+  }
+  const hideBar = () => bar.classList.add('hidden');
   function end() {
     if (!d) return;
+    hideBar(); dragOn = false;
     clearTimeout(d.flipT); d.ghost?.remove(); d.over?.classList.remove('drop-t');
     document.querySelectorAll('.drag-src').forEach(x => x.classList.remove('drag-src'));
     document.body.classList.remove('drag-on');
@@ -1788,7 +1942,7 @@ function moveCard(from, to) {
     if (!d.on) {
       if (Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 7) return;
       const c = ab()?.slots[d.idx]; if (!c) { end(); return; }
-      d.on = true;
+      d.on = true; dragOn = true;
       d.ghost = document.createElement('div');
       d.ghost.className = 'drag-ghost';
       d.ghost.innerHTML = `<img src="${esc(cardImg(c, 'small'))}" alt="">`;
@@ -1800,7 +1954,9 @@ function moveCard(from, to) {
     const hit = under(e.clientX, e.clientY);
     const arrow = hit?.closest('#prev-btn,#next-btn,#r-prev,#r-next');
     const slot = hit?.closest('#cg .slot');
-    mark(arrow && !arrow.disabled ? arrow : slot && +slot.dataset.idx !== d.idx ? slot : null);
+    d.ins = arrow ? -1 : insAt(slot, e.clientX);
+    if (d.ins >= 0) { mark(null); showBar(slot, d.ins > +slot.dataset.idx); }
+    else { hideBar(); mark(arrow && !arrow.disabled ? arrow : slot && +slot.dataset.idx !== d.idx ? slot : null); }
     const btn = arrow && !arrow.disabled && !(/next/.test(arrow.id) && arrow.classList.contains('add')) ? arrow : null;
     if (btn !== d.btn) {
       clearTimeout(d.flipT); d.btn = btn;
@@ -1819,9 +1975,10 @@ function moveCard(from, to) {
     if (d.on) {
       noOpenUntil = Date.now() + 400;   // the drop must not also open the card
       const slot = under(e.clientX, e.clientY)?.closest('#cg .slot');
-      const from = d.idx, to = slot ? +slot.dataset.idx : -1;
+      const from = d.idx, to = slot ? +slot.dataset.idx : -1, ins = slot ? insAt(slot, e.clientX) : -1;
       end();
-      if (to >= 0 && to !== from) moveCard(from, to);
+      if (ins >= 0) insertCard(from, ins);
+      else if (to >= 0 && to !== from) moveCard(from, to);
     } else end();
   });
   addEventListener('pointercancel', end);
@@ -1855,19 +2012,26 @@ function removeCard(idx) {
 
 (() => {
   const cg = document.getElementById('cg');
+  // filled cards always; empty slots only while rearranging (for Remove this blank)
+  const menuSlot = t => t.closest(rearr ? '.slot-filled,.slot-empty[data-idx]' : '.slot-filled');
   cg.addEventListener('contextmenu', e => {
-    const el = e.target.closest('.slot-filled'); if (!el) return;
+    const el = menuSlot(e.target); if (!el) return;
     e.preventDefault();
+    if (dragOn) return;
     openCtx(+el.dataset.idx, e.clientX, e.clientY);
   });
-  // long-press for touch screens (iOS never sends a contextmenu event)
+  // long-press for touch screens (iOS never sends a contextmenu event). While rearranging, a press
+  // held still opens the menu; moving starts a drag instead.
   let t = null, x0 = 0, y0 = 0;
   cg.addEventListener('touchstart', e => {
-    const el = e.target.closest('.slot-filled');
-    if (!el || rearr || e.touches.length !== 1) return;
+    const el = menuSlot(e.target);
+    if (!el || e.touches.length !== 1) return;
     x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
     clearTimeout(t);
-    t = setTimeout(() => { noOpenUntil = Date.now() + 800; navigator.vibrate?.(15); openCtx(+el.dataset.idx, x0, y0); }, 480);
+    t = setTimeout(() => {
+      if (dragOn) return;
+      noOpenUntil = Date.now() + 800; navigator.vibrate?.(15); openCtx(+el.dataset.idx, x0, y0);
+    }, 480);
   }, { passive: true });
   cg.addEventListener('touchmove', e => {
     const p = e.touches[0];
@@ -2446,7 +2610,7 @@ document.querySelectorAll('.overlay').forEach(el => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !ctxEl().classList.contains('hidden')) { hideCtx(); return; }
   if (e.key === 'Escape' && !document.getElementById('m-confirm').classList.contains('hidden')) { closeM('m-confirm'); return; }   // only the top dialog
-  if (e.key === 'Escape') ['m-confirm','m-add','m-det','m-new','m-set','m-bulk','m-sync','m-val','m-shop'].forEach(closeM);
+  if (e.key === 'Escape') ['m-confirm','m-add','m-det','m-new','m-set','m-bulk','m-sync','m-val','m-shop','m-move'].forEach(closeM);
   if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) && !document.querySelector('.overlay:not(.hidden)')) {
     const q = document.getElementById('f-q');
     if (q && q.offsetParent) { e.preventDefault(); q.focus(); }
@@ -2552,7 +2716,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.11.14.2';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.11.14.3';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
