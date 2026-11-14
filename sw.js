@@ -15,7 +15,8 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil((async () => {
-    for (const k of await caches.keys()) if (![CACHE_APP, CACHE_IMG].includes(k)) await caches.delete(k);
+    // Only our own old caches: ManaBinder lives on the same origin (rstibal.github.io) and its caches must survive.
+    for (const k of await caches.keys()) if (k.startsWith('megabinder-') && ![CACHE_APP, CACHE_IMG].includes(k)) await caches.delete(k);
     await self.clients.claim();
   })());
 });
