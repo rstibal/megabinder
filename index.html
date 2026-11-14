@@ -1348,20 +1348,20 @@ function goPage(d) {
   turnPage(d);
 }
 /* A quick slide so a page turn is visible even when the two pages look alike: the old page slides out
-   the way it was swiped, the new one slides in (about a quarter second; none with reduced motion). */
+   the way it was swiped, the new one slides in (under a fifth of a second; none with reduced motion). */
 let turnTok = 0;
 function turnPage(d) {
   const cg = document.getElementById('cg'), tok = ++turnTok;
   cg.getAnimations().forEach(a => a.cancel());   // a quick second turn skips the rest of the first
   if (!cg.animate || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) { renderBinder(); return; }
-  const out = cg.animate([{ transform: 'none', opacity: 1 }, { transform: `translateX(${-d * 35}%)`, opacity: 0 }], { duration: 110, easing: 'ease-in', fill: 'forwards' });
+  const out = cg.animate([{ transform: 'none', opacity: 1 }, { transform: `translateX(${-d * 35}%)`, opacity: 0 }], { duration: 80, easing: 'ease-in', fill: 'forwards' });
   const swap = () => {   // also on a timer, so the page still turns if the browser holds the animation back
     if (tok !== turnTok) return;
     turnTok++;
     renderBinder(); out.cancel();
-    cg.animate([{ transform: `translateX(${d * 35}%)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 140, easing: 'ease-out' });
+    cg.animate([{ transform: `translateX(${d * 35}%)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 100, easing: 'ease-out' });
   };
-  out.onfinish = swap; setTimeout(swap, 200);
+  out.onfinish = swap; setTimeout(swap, 150);
 }
 
 function switchBinder(id) {
@@ -2552,7 +2552,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.11.07.3';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.11.14.1';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
