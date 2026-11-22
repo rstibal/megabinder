@@ -1071,8 +1071,18 @@ const isStandIn = c => c.lang && c.lang !== 'en' && (!c.imageSmall || /assets\.t
 const borrowedEn = c => c.lang && c.lang !== 'en' && (!c.imageSmall || c.imageSmall.includes('assets.tcgdex.net/en/'))
   ? fbImages(setOfCard(c), c.number, c.lang).borrowed || '' : '';
 const ribbon = (c, en) => `<b>${esc(c.name)}</b><i>${esc(setOfCard(c))} #${esc(c.number)} · EN art #${esc(en)}</i>`;
+/* TCGdex is missing the odd small WebP (Destined Rivals Arcanine sv10-028) while its PNG and the large picture exist:
+   step a failed TCGdex thumbnail through low.png, then high.webp. True if it is trying another file. */
+function imgRetry(el) {
+  const s = el.getAttribute('src') || '';
+  if (!s.includes('assets.tcgdex.net/')) return false;
+  if (s.endsWith('/low.webp')) { el.src = s.slice(0, -4) + 'png'; return true; }
+  if (s.endsWith('/low.png'))  { el.src = s.slice(0, -7) + 'high.webp'; return true; }
+  return false;
+}
 /* a picture that fails to load becomes the name placeholder instead of a broken-image icon */
 function imgFail(el) {
+  if (imgRetry(el)) return;
   const d = document.createElement('div');
   d.className = 'ph';
   d.innerHTML = `<div class="ph-n">${esc(el.alt || '')}</div>`;
@@ -1516,7 +1526,7 @@ function renderResults() {
     const num = c.number ? `#${c.number}` : '';
     const vb  = c.variant !== 'normal' ? `<span class="rcv rcv-${c.variant}">${VL[c.variant]}</span>` : '';
     return `<div class="rc${selCard===c?' sel':''}" onclick="pickResult(${i})">
-      ${img ? `<img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy">`
+      ${img ? `<img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy" onerror="imgRetry(this)">`
              : `<div class="ph"><div class="ph-n">${esc(c.name)}</div></div>`}
       ${vb}
       <div class="rcset">${enOf(c) ? `<b>${esc(enOf(c))}</b>` : ''}${esc(sn)} ${num}${c.images?.borrowed ? ` · EN art #${esc(c.images.borrowed)}` : ''}</div>
@@ -1945,7 +1955,7 @@ function moveCard(from, to) {
       d.on = true; dragOn = true;
       d.ghost = document.createElement('div');
       d.ghost.className = 'drag-ghost';
-      d.ghost.innerHTML = `<img src="${esc(cardImg(c, 'small'))}" alt="">`;
+      d.ghost.innerHTML = `<img src="${esc(cardImg(c, 'small'))}" alt="" onerror="imgRetry(this)">`;
       document.body.appendChild(d.ghost);
       document.body.classList.add('drag-on');
       cg.querySelector(`[data-idx="${d.idx}"]`)?.classList.add('drag-src');
@@ -2510,7 +2520,7 @@ function renderBulkGrid() {
     const num = c.number ? `#${c.number}` : '';
     return `<div class="bcard${kind === 'r' ? ' rh' : ''}${bulkNeed.has(key) ? ' need' : ' sel'}" data-k="${key}" onclick="toggleBCard('${key}')">
       ${img
-        ? `<img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy">`
+        ? `<img src="${esc(img)}" alt="${esc(c.name)}" loading="lazy" onerror="imgRetry(this)">`
         : `<div class="bcard-ph">${esc(c.name)}</div>`}
       <div class="bcard-nm" title="${esc(c.name)}">${num} ${esc(enOf(c) || c.name)}${c.images?.borrowed ? ' · EN art' : ''}</div>
     </div>`;
@@ -2716,7 +2726,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.11.21.1';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.11.21.2';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
