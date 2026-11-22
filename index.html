@@ -116,7 +116,7 @@ html,body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text
 .slot-empty{background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:rgba(255,255,255,.2)}
 .slot-empty:hover{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.5);color:rgba(239,68,68,.7)}
 .slot-filled{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.5)}
-.slot-filled:hover{transform:translateY(-4px);box-shadow:0 8px 22px rgba(0,0,0,.45);z-index:2}
+.slot-filled:hover{box-shadow:0 8px 22px rgba(0,0,0,.45);z-index:2}
 .slot-filled img{width:100%;height:100%;object-fit:cover;display:block}
 .slot-need img{filter:grayscale(1) brightness(.8);opacity:.5}
 .slot-need{box-shadow:0 0 0 1px rgba(255,255,255,.12) inset!important;background:rgba(255,255,255,.04)}
@@ -148,7 +148,6 @@ body.ro .b-rearr{display:none!important}
 /* Rearranging (drag a card onto another slot); off until the lock is opened */
 .b-rearr.on{background:rgba(250,204,21,.14)!important;border-color:#facc15!important;color:#fde68a!important}
 body.rearr .slot-filled{cursor:grab;touch-action:none;box-shadow:0 0 0 1px rgba(250,204,21,.55),0 2px 8px rgba(0,0,0,.5)}
-body.rearr .slot-filled:hover{transform:none}
 body.drag-on,body.drag-on *{cursor:grabbing!important;user-select:none;-webkit-user-select:none}
 .slot.drag-src{opacity:.35}
 .slot.drop-t{outline:2px solid #facc15;outline-offset:2px}
@@ -211,21 +210,37 @@ body.fit .pg-bar,body.fit .fbar{display:none}
 body.fit .viewport{position:fixed;top:0;right:0;bottom:0;left:var(--rw);padding:6px;align-items:center}
 body.fit.nav-bar .viewport{left:0;top:var(--rw)}
 body.fit .binder-wrap{flex:none;max-width:none}
-body.fit .slot-filled:hover{transform:none}
 body.fit.fit-find .fbar{display:flex;position:fixed;top:8px;left:calc(var(--rw) + 8px);right:8px;z-index:60;margin:0;padding:8px;background:var(--surf);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
 body.fit.nav-bar.fit-find .fbar{left:8px;top:calc(var(--rw) + 8px)}
 
-/* ── Variant overlay effects ─────────────────────────────── */
-@keyframes sh{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
-
-.v-reverse_holo::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(115deg,transparent 0 12px,rgba(255,255,255,.16) 12px 22px),linear-gradient(135deg,rgba(96,165,250,.22),rgba(167,139,250,.18),rgba(52,211,153,.2));box-shadow:inset 0 0 0 3px rgba(147,197,253,.55);mix-blend-mode:screen;pointer-events:none;z-index:1}
-.v-holo::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(250,204,21,.25),rgba(251,146,60,.2),rgba(34,211,238,.22),rgba(168,85,247,.2),rgba(250,204,21,.25));background-size:400% 400%;animation:sh 2.5s ease infinite;pointer-events:none;z-index:1}
-.v-full_art{box-shadow:0 0 0 2.5px #059669,0 4px 18px rgba(5,150,105,.45)!important}
-.v-full_art::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(52,211,153,.18),rgba(16,185,129,.12));pointer-events:none;z-index:1}
-.v-rainbow{box-shadow:0 0 0 2.5px #a855f7,0 4px 18px rgba(168,85,247,.5)!important}
-.v-rainbow::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(239,68,68,.2),rgba(249,115,22,.2),rgba(234,179,8,.2),rgba(34,197,94,.2),rgba(59,130,246,.2),rgba(168,85,247,.2));background-size:400% 400%;animation:sh 2s linear infinite;pointer-events:none;z-index:1}
-.v-gold{box-shadow:0 0 0 2.5px #d97706,0 4px 18px rgba(217,119,6,.55)!important}
-.v-gold::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(251,191,36,.3),rgba(245,158,11,.18),rgba(251,191,36,.3));background-size:300% 300%;animation:sh 2.5s ease infinite;pointer-events:none;z-index:1}
+/* ── Finishes: foil drawn like the real card, plus a shine that follows the mouse or the phone's tilt ──
+   ::before is the foil (Rev. Holo everywhere but the picture box, Holo only in it, Full Art etched all over,
+   Gold metallic, Rainbow tinted); ::after is the shine on every card. --mx/--my place the shine, --px/--py
+   shift the rainbow, --rx/--ry tilt the card and --glare fades the shine in. A hovered card gets its own values
+   (mouse); on a phone they are set on the page root from the tilt sensor, so every card moves together. */
+:root{
+  --rainbow:linear-gradient(125deg,#ff7a7a 0%,#ffd36b 17%,#8cff9a 34%,#6be3ff 51%,#a58cff 68%,#ff8ce0 85%,#ff7a7a 100%);
+  --lines:repeating-linear-gradient(125deg,rgba(255,255,255,.4) 0 2px,transparent 2px 5px,rgba(0,0,0,.24) 5px 7px,transparent 7px 10px);
+  /* the picture box on a modern card, roughly x 8-92%, y 11-54% */
+  --off-art:linear-gradient(to bottom,#000 11%,transparent 11% 54%,#000 54%),linear-gradient(to right,#000 8%,transparent 8% 92%,#000 92%);
+  --on-art:linear-gradient(to bottom,transparent 11%,#000 11% 54%,transparent 54%),linear-gradient(to right,transparent 8%,#000 8% 92%,transparent 92%);
+}
+.slot-filled:not(.slot-need),.detimgw:not(.need){transform:perspective(700px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg))}
+.slot-filled:not(.slot-need)::before,.slot-filled:not(.slot-need)::after,.detimgw:not(.need)::before,.detimgw:not(.need)::after{content:'';position:absolute;inset:0;pointer-events:none;z-index:1}
+.slot-filled::after,.detimgw::after{background:radial-gradient(circle at var(--mx,50%) var(--my,50%),rgba(255,255,255,.7),rgba(255,255,255,0) 45%);mix-blend-mode:overlay;opacity:calc(var(--glare,0) * .6);transition:opacity .25s}
+.v-reverse_holo::after,.v-holo::after,.v-full_art::after,.v-gold::after,.v-rainbow::after{opacity:var(--glare,0)}
+.v-reverse_holo::before{background:var(--lines),var(--rainbow);background-size:auto,200% 200%;background-position:0 0,var(--px,50%) var(--py,50%);opacity:.6;-webkit-mask:var(--off-art);mask:var(--off-art)}
+.v-holo::before{background:var(--lines),var(--rainbow);background-size:auto,200% 200%;background-position:0 0,var(--px,50%) var(--py,50%);opacity:.55;-webkit-mask:var(--on-art);-webkit-mask-composite:source-in;mask:var(--on-art);mask-composite:intersect}
+.v-full_art::before{background:repeating-linear-gradient(45deg,rgba(255,255,255,.28) 0 1px,transparent 1px 4px),repeating-linear-gradient(-45deg,rgba(0,0,0,.16) 0 1px,transparent 1px 4px),var(--rainbow);background-size:auto,auto,200% 200%;background-position:0 0,0 0,var(--px,50%) var(--py,50%);opacity:.42}
+.v-gold::before{background:repeating-linear-gradient(125deg,rgba(255,250,220,.4) 0 1.5px,transparent 1.5px 5px),linear-gradient(125deg,#ffe08a,#b8860b 30%,#fff1b8 52%,#a87408 75%,#ffe08a);background-size:auto,200% 200%;background-position:0 0,var(--px,50%) var(--py,50%);mix-blend-mode:overlay;opacity:.75}
+.v-rainbow::before{background:repeating-linear-gradient(125deg,rgba(255,255,255,.3) 0 1.5px,transparent 1.5px 5px),var(--rainbow);background-size:auto,200% 200%;background-position:0 0,var(--px,50%) var(--py,50%);mix-blend-mode:color;opacity:.55}
+.v-holo{box-shadow:0 0 0 2px #cbd5e1,0 3px 12px rgba(0,0,0,.5)!important}
+.v-full_art{box-shadow:0 0 0 2px #059669,0 3px 12px rgba(0,0,0,.5)!important}
+.v-gold{box-shadow:0 0 0 2px #d97706,0 3px 12px rgba(0,0,0,.5)!important}
+.v-rainbow{box-shadow:0 0 0 2px #a855f7,0 3px 12px rgba(0,0,0,.5)!important}
+.slot-filled.shine,.detimgw.shine{transition:transform .08s linear,box-shadow .15s}
+body.rearr .slot-filled{transform:none}
+body.rearr .slot-filled::after{opacity:0}
 
 /* ── Variant badge ───────────────────────────────────────── */
 .vbadge{position:absolute;top:4px;right:4px;font-size:.44rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:2px 5px;border-radius:3px;z-index:3;pointer-events:none;line-height:1.4;backdrop-filter:blur(2px)}
@@ -1995,6 +2010,66 @@ function moveCard(from, to) {
   addEventListener('keydown', e => { if (e.key === 'Escape' && d?.on) end(); });
 })();
 
+/* Shine (see the Finishes CSS): with a mouse, the hovered card tilts toward the pointer and its foil and
+   shine follow it. On a phone, tilting the phone moves every card's foil and shine together: the readings
+   are taken against a slowly drifting rest position, so however the phone is held counts as level after a
+   few seconds. Off while rearranging. */
+(() => {
+  const SHINE = '#cg .slot-filled:not(.slot-need),.detimgw:not(.need)';
+  const VARS = ['--mx', '--my', '--px', '--py', '--rx', '--ry', '--glare'];
+  const setVars = (el, fx, fy, glare) => {   // fx, fy: 0..1 across the card (0.5 = centre)
+    const s = el.style;
+    s.setProperty('--mx', (fx * 100).toFixed(1) + '%'); s.setProperty('--my', (fy * 100).toFixed(1) + '%');
+    s.setProperty('--px', (fx * 100).toFixed(1) + '%'); s.setProperty('--py', (fy * 100).toFixed(1) + '%');
+    s.setProperty('--rx', ((0.5 - fy) * 14).toFixed(2) + 'deg'); s.setProperty('--ry', ((fx - 0.5) * 14).toFixed(2) + 'deg');
+    s.setProperty('--glare', glare.toFixed(2));
+  };
+  const clear = el => { VARS.forEach(p => el.style.removeProperty(p)); el.classList.remove('shine'); };
+
+  // mouse: the card under the pointer
+  let cur = null;
+  addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse') return;
+    const el = rearr || dragOn ? null : e.target.closest?.(SHINE) || null;
+    if (cur && cur !== el) clear(cur);
+    cur = el;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    el.classList.add('shine');
+    setVars(el, Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)), 1);
+  }, { passive: true });
+  document.addEventListener('pointerleave', () => { if (cur) { clear(cur); cur = null; } });
+
+  // phone: the tilt sensor, on touch screens only
+  if (!matchMedia('(hover: none)').matches || !('DeviceOrientationEvent' in window)) return;
+  const root = document.documentElement;
+  let base = null, last = null, raf = 0;
+  const onTilt = e => {
+    if (e.beta == null || e.gamma == null) return;
+    // turn the readings into screen left/right and up/down, whichever way the screen is rotated
+    const a = (screen.orientation?.angle ?? window.orientation ?? 0) % 360;
+    let x = e.gamma, y = e.beta;
+    if (a === 90) { x = e.beta; y = -e.gamma; } else if (a === 270 || a === -90) { x = -e.beta; y = e.gamma; } else if (a === 180) { x = -e.gamma; y = -e.beta; }
+    if (!base) base = { x, y };
+    base.x += (x - base.x) * 0.01; base.y += (y - base.y) * 0.01;   // the rest position drifts toward how it is held
+    last = { x, y };
+    if (!raf) raf = requestAnimationFrame(apply);
+  };
+  function apply() {
+    raf = 0;
+    if (!last || rearr) { VARS.forEach(p => root.style.removeProperty(p)); return; }
+    const dx = Math.max(-1, Math.min(1, (last.x - base.x) / 20)), dy = Math.max(-1, Math.min(1, (last.y - base.y) / 20));
+    setVars(root, 0.5 + dx / 2, 0.5 + dy / 2, Math.min(1, 0.15 + Math.hypot(dx, dy) * 1.2));
+  }
+  addEventListener('deviceorientation', onTilt);   // Android sends readings straight away
+  if (typeof DeviceOrientationEvent.requestPermission === 'function') {   // iPhone and iPad (and some browsers) ask first, on a tap
+    addEventListener('pointerdown', function ask() {
+      removeEventListener('pointerdown', ask);
+      DeviceOrientationEvent.requestPermission().catch(() => {});
+    });
+  }
+})();
+
 let toastT = null;
 function showToast(msg, actLabel, act) {
   const t = document.getElementById('toast'), btn = document.getElementById('toast-act');
@@ -2726,7 +2801,7 @@ async function initShared() {
 /* ── Cloud sync (private GitHub gist) ─────────────────────── */
 /* Whole-state sync: st.modified is stamped on every save. `sync.base` is the st.modified value at the
    last successful sync, so we can tell which side changed since. If both did, the user picks a side. */
-const APP_VERSION = '2026.11.21.2';   // bump on every pushed change, so each device can show which copy it is running
+const APP_VERSION = '2026.11.21.3';   // bump on every pushed change, so each device can show which copy it is running
 const SK_SYNC   = 'pkSync1';
 const GIST_DESC = 'pokemon-binder data (do not edit)';
 const GIST_FILE = 'pokemon-binder.json';
