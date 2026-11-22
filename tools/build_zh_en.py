@@ -112,4 +112,5 @@ def main():
 
 
 if __name__ == '__main__':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')   # the Windows console can't print Chinese names
     sys.exit(main())
